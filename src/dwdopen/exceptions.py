@@ -1,10 +1,14 @@
+"""Exception hierarchy and error-message helpers."""
+
 from __future__ import annotations
+
 from collections.abc import Sequence
 from difflib import get_close_matches
 
 __all__ = [
     "AmbiguousSelectionError",
     "CatalogueError",
+    "CatalogueUnavailableError",
     "DWDOpenError",
     "DownloadError",
     "IncompleteRunError",
@@ -24,8 +28,14 @@ class DWDOpenError(Exception):
     """Base class for every error raised by dwdopen."""
 
 
+# --- catalogue / discovery -------------------------------------------------
+
 class CatalogueError(DWDOpenError):
     """Something went wrong while reading the Open Data catalogue."""
+
+
+class CatalogueUnavailableError(CatalogueError):
+    """The catalogue could not be reached or parsed."""
 
 
 class UnknownModelError(CatalogueError):
@@ -36,20 +46,24 @@ class UnknownParameterError(CatalogueError):
     """The requested parameter is not visible for this model."""
 
 
+# --- building a query ------------------------------------------------------
+
 class SelectionError(DWDOpenError):
-    """The selection is invalid."""
+    """The selection is invalid, independent of availability."""
 
 
-class InvalidSelectorError(DWDOpenError):
-    """..."""
+class InvalidSelectorError(SelectionError):
+    """A selector value could not be interpreted."""
 
 
 class AmbiguousSelectionError(SelectionError):
-    """The selection is ambiguous (e.g., several level types possible)."""
+    """The selection matches several distinct products and must be narrowed."""
 
+
+# --- resolving a query against a run ---------------------------------------
 
 class ResolutionError(DWDOpenError):
-    """A query could not be resolved."""
+    """A query could not be resolved into concrete assets."""
 
 
 class NoMatchingRunError(ResolutionError):
@@ -65,40 +79,51 @@ class MissingAssetError(ResolutionError):
 
 
 class RunExpiredError(ResolutionError):
-    """Assets resolved earlier have since disappeared."""
+    """Assets resolved earlier have since disappeared.
 
+    Retention is short: ICON-EU keeps 8 runs (~24 h), ICON-D2-RUC 32. A missing
+    asset is not proof of expiry though. Several servers sit behind
+    opendata.dwd.de and they are not perfectly in sync, so retry first.
+    """
+
+
+# --- transport -------------------------------------------------------------
 
 class DownloadError(DWDOpenError):
     """A download failed."""
 
 
-# helpers
+# --- helpers ---------------------------------------------------------------
 
 def unknown_name_message(
-        kind: str,
-        name: str,
-        available: Sequence[str],
-        *,
-        context: str | None = None,
-        max_listed: int = 20,
+    kind: str,
+    name: str,
+    available: Sequence[str],
+    *,
+    context: str | None = None,
+    max_listed: int = 20,
 ) -> str:
     """Build an actionable message for an unknown model or parameter name.
 
-    Args:
-        kind: what was not found, e.g. model.
-        name: the name that was asked for.
-        available: the names that do exist.
-        context: optional qualifier
-        max_listed: list only that many avail entries.
+    Only the offending name is quoted, so that a trailing space or an empty
+    string is visible; suggestions and the list of available names are not,
+    quotes only add noise there.
+
+    All names are listed only when there are few of them: 13 models fit into a
+    message, 95 parameters do not.
     """
     subject = f"unknown {kind} {name!r}"
     if context:
         subject += f" for {context}"
     parts = [subject + "."]
-    if close := get_close_matches(name, available, n=3, cutoff=0.6):
-        parts.append("Did you mean " + " or ".join(repr(c) for c in close) + "?")
+
+    close = get_close_matches(name, available, n=3, cutoff=0.6)
+    if close:
+        parts.append("Did you mean " + " or ".join(close) + "?")
+
     if len(available) <= max_listed:
         parts.append("Available: " + ", ".join(available) + ".")
     else:
         parts.append(f"{len(available)} names available.")
+
     return " ".join(parts)

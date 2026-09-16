@@ -1,3 +1,5 @@
+"""Model run (reference time)."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,51 +10,61 @@ from dwdopen.exceptions import InvalidSelectorError
 __all__ = ["Run", "RunLike"]
 
 
-@dataclass(frozen=True, slots=True, order=True)
+@dataclass(frozen=True, order=True)
 class Run:
     """A single model run, identified by its reference time.
-    ``reference_time`` is always UTC. DWD's run directories carry no timezone
-    suffix and are implicitly assumed to be UTC.
+
+    ``reference_time`` is always timezone-aware UTC. DWD's run directories
+    (.../r/2026-09-14T12:00/) carry no timezone suffix and are implicitly UTC;
+    attaching UTC at parse time keeps that from becoming a silent offset bug.
+
+    A Run does not store the raw path token. Per the "never construct a path
+    from assumptions" rule the catalogue keeps the mapping from a Run back to
+    the exact token it saw in a listing.
+
+    ``order=True`` because runs get sorted and compared all the time.
     """
 
     reference_time: datetime
 
     def __post_init__(self) -> None:
-        """Make sure time zone is set."""
         if self.reference_time.tzinfo is None:
             raise InvalidSelectorError(
                 f"Run.reference_time must be timezone-aware, "
-                f"got {self.reference_time!r}"
+                f"got {self.reference_time}"
             )
 
     @classmethod
     def coerce(cls, value: RunLike) -> Run:
-        """Accept a ``Run``, a ``datetime`` or an ISO-8601 string.
-        """
-        match value:
-            case Run():
-                return value
-            case datetime():
-                return cls(cls._as_utc(value))
-            case str():
-                try:
-                    parsed = datetime.fromisoformat(value)
-                except ValueError as exc:
-                    raise InvalidSelectorError(
-                        f"could not parse run {value!r} as ISO-8601"
-                    ) from exc
-                return cls(cls._as_utc(parsed))
-            case _:
-                raise InvalidSelectorError(f"cannot interpret {value!r} as a run")
+        """Accept a Run, a datetime or an ISO-8601 string.
 
-    @staticmethod
-    def _as_utc(value: datetime) -> datetime:
-        if value.tzinfo is None:
-            return value.replace(tzinfo=UTC)
-        return value.astimezone(UTC)
+        The lenient user-facing path: a naive datetime or a string without an
+        offset is read as UTC. The constructor itself stays strict.
+        """
+        if isinstance(value, Run):
+            return value
+        if isinstance(value, datetime):
+            return cls(_as_utc(value))
+        if isinstance(value, str):
+            try:
+                parsed = datetime.fromisoformat(value)
+            except ValueError as exc:
+                raise InvalidSelectorError(
+                    f"could not parse run {value!r} as ISO-8601"
+                ) from exc
+            return cls(_as_utc(parsed))
+        raise InvalidSelectorError(
+            f"cannot interpret {value} of type {type(value).__name__} as a run"
+        )
 
     def __str__(self) -> str:
         return self.reference_time.isoformat()
 
 
-type RunLike = Run | datetime | str
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+RunLike = Run | datetime | str

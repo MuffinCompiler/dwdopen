@@ -10,16 +10,21 @@ from dwdopen.exceptions import UnknownModelError, unknown_name_message
 from dwdopen.nwp.catalogue import Catalogue
 from dwdopen.nwp.model import Model
 
-# Exposed imports
 __all__ = ["DWD", "NWP"]
 
 DEFAULT_BASE_URL = "https://opendata.dwd.de"
+"""Production Open Data root.
+
+DWD also runs a test branch at https://opendata.dwd.de/test, which currently
+carries the test data for the 6 October 2026 ICON-EU grid change.
+"""
 
 
 class NWP:
-    """Namespace for Numerical weather prediction (NWP) data.
-    Allows to add other sources (e.g., observations) later in
-    separate submodules.
+    """Namespace for numerical weather prediction data.
+
+    A namespace so other DWD domains (observations, radar, ...) can be added
+    later without crowding DWD itself.
     """
 
     __slots__ = ("_catalogue",)
@@ -28,16 +33,18 @@ class NWP:
         self._catalogue = catalogue
 
     def models(self) -> list[str]:
-        """Model names currently visible in the catalogue."""
+        """Model names currently visible in the catalogue, sorted."""
         return self._catalogue.models()
 
     def model(self, name: str) -> Model:
         """A handle on one model.
-        ``name`` is validated against the catalogue.
-        Note that model names use hyphens while parameter names use underscores.
 
-        Raises:
-            UnknownModelError: if ``name`` is not in the catalogue.
+        The name is validated against the catalogue, so a typo fails here
+        rather than inside a later query. Model names use hyphens while
+        parameter names use underscores.
+
+        This is therefore the first call that may touch the network. The model
+        listing is cached, so further calls are free (or until cache has been invalidated).
         """
         available = self._catalogue.models()
         if name not in available:
@@ -50,15 +57,18 @@ class NWP:
 
 class DWD:
     """Client for DWD Open Data.
+
     Constructing a client performs no I/O. The first call that needs
     availability information builds the catalogue and contacts the server.
 
-    Holds a connection pool, so use this class preferably as::
+    Holds a connection pool, so prefer this syntax to make sure the connection
+    is closed properly::
 
         with DWD() as dwd:
             icon_eu = dwd.nwp.model("icon-eu")
 
-    One client per process is the intended usage, clients do not share their caches.
+    One client per process is the intended usage. Create it once and reuse it.
+    Two clients do not share their caches.
     """
 
     def __init__(
@@ -70,13 +80,17 @@ class DWD:
         catalogue: Catalogue | None = None,
     ) -> None:
         """
-        Args:
-            base_url: Open Data root.
-            timeout: per-request timeout in seconds.
-            max_connections: upper bound on concurrent requests.
-            catalogue: the catalogue to use, can inject a "fake" catalogue
-                here for testing. When ``None`` the Open Data
-                traversal catalogue is built lazily on first use.
+        base_url
+            Open Data root. Point at .../test to read the test branch.
+        timeout
+            Per-request timeout in seconds.
+        max_connections
+            Upper bound on concurrent requests. Can be a throughput knob as we
+            enumerate and download thousands of files possibly.
+        catalogue
+            Inject an alternative implementation, such as a fake in tests or a
+            different index strategy. When None the Open Data traversal
+            catalogue is built lazily on first use.
         """
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
@@ -89,12 +103,14 @@ class DWD:
 
     def _ensure_catalogue(self) -> Catalogue:
         if self._catalogue is None:
-            # TODO init catalogue
-            raise NotImplementedError("NYI")
+            raise NotImplementedError(
+                "the Open Data traversal catalogue is not implemented yet; "
+                "pass catalogue=... explicitly"
+            )
         return self._catalogue
 
     def refresh(self) -> None:
-        """Drop cached catalogue state so the next call rebuilds it."""
+        """Drop cached catalogue state so the next call re-reads from the server."""
         if self._catalogue is not None:
             self._catalogue.refresh()
 

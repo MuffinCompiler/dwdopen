@@ -1,19 +1,22 @@
+"""The seam between the semantic layer and whatever provides availability."""
+
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol
 
 from dwdopen.nwp.run import Run
 
 __all__ = ["Catalogue"]
 
 
-@runtime_checkable
 class Catalogue(Protocol):
     """Read-only view of what DWD Open Data currently offers.
 
-    Several implementations can satisfy it: lazy HTTP directory traversal (the
-    only one built for now), a bulk index built from the ``content.log.bz2``
-    file, and some fake protocol for tests.
+    This is the boundary that keeps URL and path knowledge out of the semantic
+    layer: nothing above it may know how availability is obtained.
+    Several implementations can satisfy it. Lazy HTTP directory traversal is
+    the only one built for now; a bulk index built from content.log.bz2 is
+    conceivable later, and tests use a fake.
     """
 
     def models(self) -> list[str]:
@@ -21,33 +24,30 @@ class Catalogue(Protocol):
         ...
 
     def parameters(self, model: str) -> list[str]:
-        """Parameter names visible for ``model``, sorted.
+        """Parameter names visible for the model, sorted.
 
-        Raises:
-            UnknownModelError: if ``model`` is not in the catalogue.
+        Raises UnknownModelError if the model is not in the catalogue.
         """
         ...
 
     def runs(self, model: str, *, probe: str | None = None) -> list[Run]:
-        """Runs visible for ``model``, oldest first.
-        ``probe`` names the parameter used to probe for available runs. Required
-        as the DWD data API layout puts ``/r/<run>/`` below the parameter.
-        When ``probe`` is ``None`` the implementation picks a cheap single-level
-        parameter from the catalogue.
-        The result is therefore only a guess of the runs of this model, and
-        a run may appear here while it is still being published but not fully
-        available yet.
+        """Runs visible for the model, oldest first.
 
-        Raises:
-            UnknownModelError: if ``model`` is not in the catalogue.
-            UnknownParameterError: if ``probe`` is given but not available.
+        ``probe`` names the parameter used to answer this. It exists because
+        the v1 layout puts /r/<run>/ below the parameter, and below lvt1/lv1
+        for 3-D fields. There is therefore no run listing at model level. When
+        probe is None the implementation picks a cheap single-level parameter.
+        Thus, a run can appear here while it is still being published!
+
+        Raises UnknownModelError, or UnknownParameterError if probe is given
+        but not available.
         """
         ...
 
     def refresh(self) -> None:
-        """Drop cached state so the next call rebuilds this catalogue."""
+        """Drop cached state so the next call re-builds the catalogue from the server."""
         ...
 
     def close(self) -> None:
-        """Release any resources."""
+        """Release any transport resources."""
         ...

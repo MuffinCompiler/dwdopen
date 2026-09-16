@@ -1,3 +1,5 @@
+"""NWP (numerical weather prediction) domain."""
+
 from __future__ import annotations
 
 from dwdopen.nwp.model import Model, ParameterInfo
