@@ -56,8 +56,8 @@ _MONTHS = {
 def parse_listing(html: str) -> list[ListingEntry]:
     """Parse one nginx autoindex page.
 
-    The parent directory ../ and other off-tree hrefs are skipped, so the
-    result contains only the children of the listed directory.
+    The parent link is skipped; every other entry is a child of the listed
+    directory.
     An unreadable page yields an empty list. The caller should know which
     directories have children. An empty page might be as valid, if there are
     no files yet for the chosen run.
@@ -65,22 +65,16 @@ def parse_listing(html: str) -> list[ListingEntry]:
     entries: list[ListingEntry] = []
     for match in _ENTRY.finditer(html):
         href = match.group("href")
-        # Skip files/references/directories that we do not want.
-        if href in ("", "../", "/") or href.startswith(("/", "?", "#")) or "://" in href:
+        if href == "../":
             continue
 
-        is_dir = href.endswith("/")
-        name = unquote(href.rstrip("/"))
-
-        raw_size = match.group("size")
-        size = int(raw_size) if raw_size not in (None, "-") else None
-
+        size = match.group("size")
         entries.append(
             ListingEntry(
-                name=name,
-                is_dir=is_dir,
+                name=unquote(href.rstrip("/")),
+                is_dir=href.endswith("/"),
                 modified=_parse_date(match.group("date")),
-                size=size,
+                size=None if size in (None, "-") else int(size),
             )
         )
     return entries
