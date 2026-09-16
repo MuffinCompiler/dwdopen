@@ -9,6 +9,8 @@ from typing import Self
 from dwdopen.exceptions import UnknownModelError, unknown_name_message
 from dwdopen.nwp.catalogue import Catalogue
 from dwdopen.nwp.model import Model
+from dwdopen._fileserver.catalogue import OpenDataCatalogue
+from dwdopen._fileserver.http import HttpClient
 
 __all__ = ["DWD", "NWP"]
 
@@ -72,12 +74,12 @@ class DWD:
     """
 
     def __init__(
-        self,
-        *,
-        base_url: str = DEFAULT_BASE_URL,
-        timeout: float = 30.0,
-        max_connections: int = 16,
-        catalogue: Catalogue | None = None,
+            self,
+            *,
+            base_url: str = DEFAULT_BASE_URL,
+            timeout: float = 30.0,
+            max_connections: int = 16,
+            catalogue: Catalogue | None = None,
     ) -> None:
         """
         base_url
@@ -103,9 +105,12 @@ class DWD:
 
     def _ensure_catalogue(self) -> Catalogue:
         if self._catalogue is None:
-            raise NotImplementedError(
-                "the Open Data traversal catalogue is not implemented yet; "
-                "pass catalogue=... explicitly"
+            self._catalogue = OpenDataCatalogue(
+                HttpClient(
+                    self._base_url,
+                    timeout=self._timeout,
+                    max_connections=self._max_connections,
+                )
             )
         return self._catalogue
 
@@ -123,10 +128,10 @@ class DWD:
         return self
 
     def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc: BaseException | None,
-        tb: TracebackType | None,
+            self,
+            exc_type: type[BaseException] | None,
+            exc: BaseException | None,
+            tb: TracebackType | None,
     ) -> None:
         self.close()
 

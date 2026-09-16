@@ -36,10 +36,8 @@ class Run:
 
     @classmethod
     def coerce(cls, value: RunLike) -> Run:
-        """Accept a Run, a datetime or an ISO-8601 string.
-
-        The lenient user-facing path: a naive datetime or a string without an
-        offset is read as UTC. The constructor itself stays strict.
+        """Creates a run from a RunLike representation, like a datetime or
+        ISO string. A datetime or a string without an offset is read as UTC.
         """
         if isinstance(value, Run):
             return value

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 from dwdopen.exceptions import (
     NoMatchingRunError,
@@ -12,6 +11,7 @@ from dwdopen.exceptions import (
     unknown_name_message,
 )
 from dwdopen.nwp.catalogue import Catalogue
+from dwdopen.nwp.query import Query
 from dwdopen.nwp.run import Run, RunLike
 from dwdopen.nwp.selectors import (
     LevelSelector,
@@ -20,9 +20,6 @@ from dwdopen.nwp.selectors import (
     SelectorValue,
     StepSelector,
 )
-
-if TYPE_CHECKING:
-    from dwdopen.nwp.query import Query
 
 __all__ = ["Model", "ParameterInfo"]
 
