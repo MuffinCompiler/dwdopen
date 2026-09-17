@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from dwdopen.exceptions import (
     NoMatchingRunError,
     UnknownParameterError,
-    unknown_name_message,
+    unknown_name_message, InvalidSelectorError,
 )
 from dwdopen.nwp.catalogue import Catalogue
 from dwdopen.nwp.query import Query
@@ -147,31 +147,38 @@ class Model:
         members: MemberSelector | None = None,
         **selectors: SelectorValue,
     ) -> Query:
-        """Describe what to retrieve. Does not contact the server.
+        """Describe what to retrieve.
+        Parameter names are validated, so this does read the .../p/ listing.
+        What it does not do is look at availability of runs or steps: that is
+        resolve(), which is why one query can be resolved against several runs.
 
-        Building a query is pure description; availability is only checked by
-        resolve() or latest_run(). Thus, we can resolve one query
-        against different runs.
-
-        parameters
-            Exact catalogue names, one or many.
-        steps
-            Durations, never integer hours. A scalar means exactly that step,
-            Every(...) a cadence, Between(...) whatever exists in a range.
-        level_type
-            An alias ("model", "pressure", "soil") or the raw numeric GRIB
-            typeOfFirstFixedSurface code (150, 100, 106). May be omitted when
-            the parameter is unambiguous, as HHL only ever occurs at 150. A
-            parameter on several types (T is on 100 and 150) raises
-            AmbiguousSelectionError rather than guessing.
-        levels
-            User-facing units, not path units: pressure in hPa, converted to
-            the Pa values in the path.
-        members
-            Plain integers; the zero-padded path form is never constructed.
-        **selectors
-            Escape hatch for product-specific dimensions. Keys are DWD
-            path-segment keys (wvl1=1064) with a small alias table on top
-            (wavelength=1064).
+         TODO levels and ensembles NYI
         """
-        raise NotImplementedError
+        unsupported = {
+            "level_type": level_type,
+            "levels": levels,
+            "members": members,
+            **selectors,
+        }
+        given = sorted(name for name, value in unsupported.items() if value is not None)
+        if given:
+            raise NotImplementedError(
+                f"{', '.join(given)}: not supported yet. only SL det."
+            )
+
+        names = (parameters,) if isinstance(parameters, str) else tuple(parameters)
+        if not names:
+            raise InvalidSelectorError("select() needs at least one parameter")
+
+        available = self._catalogue.parameters(self._name)
+        for name in names:
+            if name not in available:
+                raise UnknownParameterError(
+                    unknown_name_message(
+                        "parameter", name, available, context=f"model {self._name!r}"
+                    )
+                )
+
+        return Query(
+            self._catalogue, self._name, parameters=names, steps=steps, run=run
+        )

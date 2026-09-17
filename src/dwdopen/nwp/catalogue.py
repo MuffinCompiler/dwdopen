@@ -4,10 +4,16 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from dwdopen._fileserver.listing import parse_listing
+from dwdopen._fileserver.paths import build_path, Segment
+from dwdopen.nwp.durations import parse_duration
 from dwdopen.nwp.run import Run
+from dwdopen.exceptions import RunExpiredError
+from dwdopen.nwp.request import Asset
 
 __all__ = ["Catalogue"]
 
+GRIB_SUFFIX = ".grib2"
 
 class Catalogue(Protocol):
     """Read-only view of what DWD Open Data currently offers.
@@ -43,6 +49,40 @@ class Catalogue(Protocol):
         but not available.
         """
         ...
+
+    def assets(self, model: str, parameter: str, run: Run) -> list[Asset]:
+        """Every asset of one parameter in one run.
+        """
+        where = (("m", model), ("p", parameter))
+        token = self._run_token(where, parameter, run)
+        listing = self._http.get_listing(build_path(*where, ("r", token), key="s"))
+
+        assets = []
+        for entry in parse_listing(listing):
+            if entry.is_dir:
+                continue
+            keys = (*where, ("r", token), ("s", entry.name))
+            assets.append(
+                Asset(
+                    keys=keys,
+                    run=run,
+                    step=parse_duration(entry.name.removesuffix(GRIB_SUFFIX)),
+                    path=build_path(*keys, directory=False),
+                    size=entry.size,
+                    modified=entry.modified,
+                )
+            )
+        return assets
+
+    def _run_token(self, where: tuple[Segment, ...], parameter: str, run: Run) -> str:
+        """Find the directory name the server uses for this run."""
+        for entry in self._subdirectories(*where, key="r"):
+            if Run.coerce(entry.name) == run:
+                return entry.name
+        raise RunExpiredError(
+            f"run {run} is not available for {parameter}. Retention is short: "
+            f"ICON-EU keeps 8 runs, ICON-D2-RUC 32"
+        )
 
     def refresh(self) -> None:
         """Drop cached state so the next call re-builds the catalogue from the server."""

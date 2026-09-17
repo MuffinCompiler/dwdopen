@@ -11,6 +11,7 @@ from dwdopen._fileserver.listing import ListingEntry, parse_listing
 from dwdopen._fileserver.paths import Segment, build_path
 from dwdopen.exceptions import CatalogueUnavailableError
 from dwdopen.nwp.run import Run
+from dwdopen.nwp.request import Asset
 
 __all__ = ["OpenDataCatalogue"]
 
@@ -54,6 +55,11 @@ class OpenDataCatalogue:
         run_entries = self._subdirectories(("m", model), ("p", probe), key="r")
         runs = [Run.coerce(entry.name) for entry in run_entries]
         return sorted(runs)
+
+    def assets(self, model: str, parameter: str, run: Run) -> list[Asset]:
+        """Every asset of one parameter in one run in one model.
+        """
+        ...
 
     def refresh(self) -> None:
         """TODO after caching"""
