@@ -4,25 +4,21 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from dwdopen._fileserver.listing import parse_listing
-from dwdopen._fileserver.paths import build_path, Segment
-from dwdopen.nwp.durations import parse_duration
-from dwdopen.nwp.run import Run
-from dwdopen.exceptions import RunExpiredError
 from dwdopen.nwp.request import Asset
+from dwdopen.nwp.run import Run
 
 __all__ = ["Catalogue"]
 
-GRIB_SUFFIX = ".grib2"
 
 class Catalogue(Protocol):
     """Read-only view of what DWD Open Data currently offers.
 
-    This is the boundary that keeps URL and path knowledge out of the semantic
+    This is the interface that keeps URL and path knowledge out of the other
     layer: nothing above it may know how availability is obtained.
-    Several implementations can satisfy it. Lazy HTTP directory traversal is
-    the only one built for now; a bulk index built from content.log.bz2 is
-    conceivable later, and tests use a fake.
+    Several implementations can implement this knowledge.
+    A lazy HTTP traversal is implemented in _fileserver/traversal.py.
+    Later on, a bulk index could be built from the content,log.bz2. Or "fake"
+    implementations can be used for testing,
     """
 
     def models(self) -> list[str]:
@@ -52,37 +48,10 @@ class Catalogue(Protocol):
 
     def assets(self, model: str, parameter: str, run: Run) -> list[Asset]:
         """Every asset of one parameter in one run.
+
+        Raises RunExpiredError if the run is no longer on the server.
         """
-        where = (("m", model), ("p", parameter))
-        token = self._run_token(where, parameter, run)
-        listing = self._http.get_listing(build_path(*where, ("r", token), key="s"))
-
-        assets = []
-        for entry in parse_listing(listing):
-            if entry.is_dir:
-                continue
-            keys = (*where, ("r", token), ("s", entry.name))
-            assets.append(
-                Asset(
-                    keys=keys,
-                    run=run,
-                    step=parse_duration(entry.name.removesuffix(GRIB_SUFFIX)),
-                    path=build_path(*keys, directory=False),
-                    size=entry.size,
-                    modified=entry.modified,
-                )
-            )
-        return assets
-
-    def _run_token(self, where: tuple[Segment, ...], parameter: str, run: Run) -> str:
-        """Find the directory name the server uses for this run."""
-        for entry in self._subdirectories(*where, key="r"):
-            if Run.coerce(entry.name) == run:
-                return entry.name
-        raise RunExpiredError(
-            f"run {run} is not available for {parameter}. Retention is short: "
-            f"ICON-EU keeps 8 runs, ICON-D2-RUC 32"
-        )
+        ...
 
     def refresh(self) -> None:
         """Drop cached state so the next call re-builds the catalogue from the server."""

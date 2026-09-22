@@ -27,6 +27,14 @@ def build_path(
     wvl1 is the wavelength for ICON ART, lvt1/lv1 is the level type and level value
     for 3-D grids (absent for 2-D), and e is the ensemble member for ensemble forecasts.
 
+    DWD's newsletter of 2 September 2026 documents only m, p, lvt1, lv1, r, e, s
+    and states that lvt1/lv1 are omitted for single-level parameters. wvl1 is
+    not in that list at all: it appears under ICON-ART parameters on the server
+    but is documented nowhere current, which is why unknown keys pass through
+    here untouched rather than being validated against a fixed set. This also allows
+    us in future to support further keys in experimental models without changes to
+    this Python package.
+
     Directories get a trailing slash because nginx answers 301 without one.
     """
     parts = [V1_ROOT]

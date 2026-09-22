@@ -6,11 +6,11 @@ from functools import cached_property
 from types import TracebackType
 from typing import Self
 
+from dwdopen._fileserver.http import HttpClient
+from dwdopen._fileserver.traversal import OpenDataCatalogue
 from dwdopen.exceptions import UnknownModelError, unknown_name_message
 from dwdopen.nwp.catalogue import Catalogue
 from dwdopen.nwp.model import Model
-from dwdopen._fileserver.catalogue import OpenDataCatalogue
-from dwdopen._fileserver.http import HttpClient
 
 __all__ = ["DWD", "NWP"]
 

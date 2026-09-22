@@ -81,9 +81,11 @@ class MissingAssetError(ResolutionError):
 class RunExpiredError(ResolutionError):
     """Assets resolved earlier have since disappeared.
 
-    Retention is short: ICON-EU keeps 8 runs (~24 h), ICON-D2-RUC 32. A missing
-    asset is not proof of expiry though. Several servers sit behind
-    opendata.dwd.de and they are not perfectly in sync, so retry first.
+    Retention is short and differs per model. Counted on 2026-09-18: ICON-EU
+    and ICON-D2 keep 8 runs (3-hourly, ~24 h), ICON and the ensembles 4
+    (6-hourly, ~24 h), ICON-D2-RUC 24 (hourly). A missing asset is not proof of
+    expiry though! Several servers sit behind opendata.dwd.de and they are not
+    perfectly in sync.
     """
 
 
