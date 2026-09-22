@@ -26,7 +26,7 @@ class HttpClient:
             base_url=base_url.rstrip("/"),
             timeout=timeout,
             follow_redirects=True,
-            headers={"User-Agent": "dwdopen/0.1.0.dev0"},
+            headers={"User-Agent": "dwdopen"},
             limits=httpx.Limits(max_connections=max_connections),
         )
 
@@ -40,10 +40,18 @@ class HttpClient:
         return response.text
 
     def get_asset(self, path: str) -> bytes:
-        """Fetch one file."""
+        """Fetch one file.
+        The status is put in the error so the caller can decide how to recover
+        from the error based on the failed state.
+        """
         try:
             response = self._client.get(path)
             response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise DownloadError(
+                f"could not download {path}: {exc}",
+                status=exc.response.status_code,
+            ) from exc
         except httpx.HTTPError as exc:
             raise DownloadError(f"could not download {path}: {exc}") from exc
         return response.content

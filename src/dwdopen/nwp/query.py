@@ -11,11 +11,18 @@ from dwdopen.exceptions import (
     IncompleteRunError,
     InvalidSelectorError,
     NoMatchingRunError,
-    RunExpiredError
+    RunExpiredError,
 )
 from dwdopen.nwp.catalogue import Catalogue
 from dwdopen.nwp.durations import format_duration, parse_duration
-from dwdopen.nwp.request import Asset, MissingStep, ResolvedRequest
+from dwdopen.nwp.request import (
+    Asset,
+    CombineMode,
+    Downloader,
+    DownloadResult,
+    MissingStep,
+    ResolvedRequest,
+)
 from dwdopen.nwp.run import Run, RunLike
 from dwdopen.nwp.selectors import Between, Every, StepSelector
 
@@ -48,12 +55,14 @@ class Query:
         parameters: tuple[str, ...],
         steps: StepSelector | None = None,
         run: RunLike | None = None,
+        downloader: Downloader | None = None,
     ) -> None:
         self._catalogue = catalogue
         self._model = model
         self._parameters = parameters
         self._steps = steps
         self._run = None if run is None else Run.coerce(run)
+        self._downloader = downloader
 
     def __repr__(self) -> str:
         return (
@@ -135,6 +144,7 @@ class Query:
             assets=tuple(sorted(assets, key=Asset.sort_key)),
             resolved_at=datetime.now(UTC),
             missing=tuple(missing),
+            downloader=self._downloader,
         )
 
     def download(
@@ -143,9 +153,16 @@ class Query:
         *,
         run: RunLike | None = None,
         require: Require = "complete",
-        combine: Literal["none", "all"] = "all",
-    ) -> object:
-        raise NotImplementedError("downloading is not implemented yet")
+        combine: CombineMode = "all",
+        temp_dir: str | os.PathLike[str] | None = None,
+    ) -> DownloadResult:
+        """Resolve against a run and fetch the result in one step.
+        Convenience only. resolve() first when the download is worth inspecting
+        before thousands of files start being downloaded.
+        """
+        return self.resolve(run=run, require=require).download(
+            destination, combine=combine, temp_dir=temp_dir
+        )
 
 
 def _still_publishing(

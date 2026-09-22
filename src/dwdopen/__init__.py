@@ -20,6 +20,7 @@ from dwdopen.exceptions import (
     UnknownParameterError,
 )
 from dwdopen.nwp.model import Model, ParameterInfo
+from dwdopen.nwp.request import DownloadResult
 from dwdopen.nwp.run import Run
 from dwdopen.nwp.selectors import Between, Every, LevelType
 
@@ -32,6 +33,7 @@ __all__ = [
     "CatalogueUnavailableError",
     "DWDOpenError",
     "DownloadError",
+    "DownloadResult",
     "Every",
     "IncompleteRunError",
     "InvalidSelectorError",

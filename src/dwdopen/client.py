@@ -6,11 +6,13 @@ from functools import cached_property
 from types import TracebackType
 from typing import Self
 
+from dwdopen._fileserver.download import HttpDownloader
 from dwdopen._fileserver.http import HttpClient
 from dwdopen._fileserver.traversal import OpenDataCatalogue
 from dwdopen.exceptions import UnknownModelError, unknown_name_message
 from dwdopen.nwp.catalogue import Catalogue
 from dwdopen.nwp.model import Model
+from dwdopen.nwp.request import Downloader
 
 __all__ = ["DWD", "NWP"]
 
@@ -29,10 +31,13 @@ class NWP:
     later without crowding DWD itself.
     """
 
-    __slots__ = ("_catalogue",)
+    __slots__ = ("_catalogue", "_downloader")
 
-    def __init__(self, catalogue: Catalogue) -> None:
+    def __init__(
+        self, catalogue: Catalogue, downloader: Downloader | None = None
+    ) -> None:
         self._catalogue = catalogue
+        self._downloader = downloader
 
     def models(self) -> list[str]:
         """Model names currently visible in the catalogue, sorted."""
@@ -51,7 +56,7 @@ class NWP:
         available = self._catalogue.models()
         if name not in available:
             raise UnknownModelError(unknown_name_message("model", name, available))
-        return Model(name, self._catalogue)
+        return Model(name, self._catalogue, self._downloader)
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}()"
@@ -80,6 +85,7 @@ class DWD:
             timeout: float = 30.0,
             max_connections: int = 16,
             catalogue: Catalogue | None = None,
+            downloader: Downloader | None = None,
     ) -> None:
         """
         base_url
@@ -93,26 +99,40 @@ class DWD:
             Inject an alternative implementation, such as a fake in tests or a
             different index strategy. When None the Open Data traversal
             catalogue is built lazily on first use.
+        downloader
+            Same, for fetching the bytes of a resolved request.
         """
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
         self._max_connections = max_connections
         self._catalogue = catalogue
+        self._downloader = downloader
 
     @cached_property
     def nwp(self) -> NWP:
-        return NWP(self._ensure_catalogue())
+        return NWP(self._ensure_catalogue(), self._ensure_downloader())
+
+    @cached_property
+    def _http(self) -> HttpClient:
+        """One connection pool, shared by the catalogue and the downloader.
+        """
+        return HttpClient(
+            self._base_url,
+            timeout=self._timeout,
+            max_connections=self._max_connections,
+        )
 
     def _ensure_catalogue(self) -> Catalogue:
         if self._catalogue is None:
-            self._catalogue = OpenDataCatalogue(
-                HttpClient(
-                    self._base_url,
-                    timeout=self._timeout,
-                    max_connections=self._max_connections,
-                )
-            )
+            self._catalogue = OpenDataCatalogue(self._http)
         return self._catalogue
+
+    def _ensure_downloader(self) -> Downloader:
+        if self._downloader is None:
+            self._downloader = HttpDownloader(
+                self._http, max_workers=self._max_connections
+            )
+        return self._downloader
 
     def refresh(self) -> None:
         """Drop cached catalogue state so the next call re-reads from the server."""
@@ -123,6 +143,8 @@ class DWD:
         """Release the connection pool."""
         if self._catalogue is not None:
             self._catalogue.close()
+        if "_http" in self.__dict__:
+            self._http.close()
 
     def __enter__(self) -> Self:
         return self

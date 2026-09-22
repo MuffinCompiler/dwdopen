@@ -4,9 +4,16 @@ with DWD() as dwd:
     print(dwd.nwp.models())
     icon_eu = dwd.nwp.model("icon-eu")
     print(icon_eu.parameters())
-    print(icon_eu.latest_run(probe="T_2M"))
+    latest_run = icon_eu.latest_run(probe="T_2M")
+    print(latest_run)
+
+    query = icon_eu.select(parameters=["T_2M"], run=latest_run)
+    print(query)
+    query.resolve()
 
 
+
+"""
 from pathlib import Path
 
 from dwdopen._fileserver.http import HttpClient
@@ -32,3 +39,6 @@ try:
     print(f"{len(data)} bytes, starts with {data[:4]!r}, ends with {data[-4:]!r}")
 finally:
     http.close()
+
+
+"""

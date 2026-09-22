@@ -92,7 +92,14 @@ class RunExpiredError(ResolutionError):
 # --- transport -------------------------------------------------------------
 
 class DownloadError(DWDOpenError):
-    """A download failed."""
+    """A download failed.
+    ``status`` is the HTTP status when the server answered at all, and None for
+    a timeout or a connection failure.
+    """
+
+    def __init__(self, message: str, *, status: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status
 
 
 # --- helpers ---------------------------------------------------------------

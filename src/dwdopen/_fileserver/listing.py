@@ -1,7 +1,8 @@
 """Parsing of nginx directory listings.
 
-This is the only module in the package that looks at raw HTML.
-To the abstract layers, only ListingEntries are exposed
+This is the only module in the package that looks at the raw HTML
+returned by the OpenData DWD server.
+To the abstract layers, only ListingEntries are exposed.
 """
 
 from __future__ import annotations
@@ -63,6 +64,7 @@ def parse_listing(html: str) -> list[ListingEntry]:
     no files yet for the chosen run.
     """
     entries: list[ListingEntry] = []
+    # Iterate through regex occurrences; each match is a file or folder.
     for match in _ENTRY.finditer(html):
         href = match.group("href")
         if href == "../":
@@ -74,7 +76,7 @@ def parse_listing(html: str) -> list[ListingEntry]:
                 name=unquote(href.rstrip("/")),
                 is_dir=href.endswith("/"),
                 modified=_parse_date(match.group("date")),
-                size=None if size in (None, "-") else int(size),
+                size=None if size in (None, "-") else int(size), # None for directories
             )
         )
     return entries

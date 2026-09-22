@@ -6,12 +6,14 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from dwdopen.exceptions import (
+    InvalidSelectorError,
     NoMatchingRunError,
     UnknownParameterError,
-    unknown_name_message, InvalidSelectorError,
+    unknown_name_message,
 )
 from dwdopen.nwp.catalogue import Catalogue
 from dwdopen.nwp.query import Query
+from dwdopen.nwp.request import Downloader
 from dwdopen.nwp.run import Run, RunLike
 from dwdopen.nwp.selectors import (
     LevelSelector,
@@ -61,11 +63,17 @@ class Model:
     deliberately not "equal". Compare .name if that is what you mean.
     """
 
-    __slots__ = ("_catalogue", "_name")
+    __slots__ = ("_catalogue", "_downloader", "_name")
 
-    def __init__(self, name: str, catalogue: Catalogue) -> None:
+    def __init__(
+        self,
+        name: str,
+        catalogue: Catalogue,
+        downloader: Downloader | None = None,
+    ) -> None:
         self._name = name
         self._catalogue = catalogue
+        self._downloader = downloader
 
     @property
     def name(self) -> str:
@@ -180,5 +188,10 @@ class Model:
                 )
 
         return Query(
-            self._catalogue, self._name, parameters=names, steps=steps, run=run
+            self._catalogue,
+            self._name,
+            parameters=names,
+            steps=steps,
+            run=run,
+            downloader=self._downloader,
         )

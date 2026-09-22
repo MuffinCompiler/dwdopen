@@ -30,9 +30,7 @@ STEP_KEY = "s"
 
 For a deterministic model it sits directly below the run. An ensemble pushes it
 one level deeper, below e/<member>/, so the run of an ensemble member reads
-.../r/<run>/e/<member>/s/<step>.grib2. The key is never replaced, only moved,
-which is why finding something other than s below the run means "look deeper",
-not "this model has no steps".
+.../r/<run>/e/<member>/s/<step>.grib2.
 """
 
 
