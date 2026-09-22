@@ -14,7 +14,7 @@ from dwdopen.exceptions import (
 from dwdopen.nwp.catalogue import Catalogue
 from dwdopen.nwp.query import Query
 from dwdopen.nwp.request import Downloader
-from dwdopen.nwp.run import Run, RunLike
+from dwdopen.nwp.run import Run
 from dwdopen.nwp.selectors import (
     LevelSelector,
     LevelType,
@@ -148,7 +148,6 @@ class Model:
         self,
         *,
         parameters: str | Sequence[str],
-        run: RunLike | None = None,
         steps: StepSelector | None = None,
         level_type: str | int | None = None,
         levels: LevelSelector | None = None,
@@ -192,6 +191,5 @@ class Model:
             self._name,
             parameters=names,
             steps=steps,
-            run=run,
             downloader=self._downloader,
         )

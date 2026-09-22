@@ -147,9 +147,10 @@ class OpenDataCatalogue:
             if Run.coerce(entry.name) == run:
                 return entry.name
         raise RunExpiredError(
-            f"run {run} is not available for {parameter}. Retention is short: "
-            f"ICON-EU and ICON-D2 keep 8 runs, ICON and the ensembles 4, "
-            f"ICON-D2-RUC 24"
+            f"run {run} is not available for {parameter}. A forecast is available for only "
+            f"about 24 hours on the DWD server. If you are within this time frame, "
+            f"either the run is not published yet or not available due to other reasons. "
+            f"Check the availability directly on https://opendata.dwd.de/"
         )
 
     def refresh(self) -> None:

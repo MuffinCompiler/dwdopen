@@ -41,8 +41,11 @@ DWD's own content.log tool waits 60 s.
 
 
 class Query:
-    """A description of what to retrieve, not yet tied to a run.
-    The availability of the data is resolved by resolve() and latest_run().
+    """A description of what to retrieve. It is deliberately not tied to a run.
+
+    A query says "what" to retrieve; resolve() and download() say "which" run.
+    Keeping the two apart is what lets one query be resolved against several runs,
+     and helps us to be able to combine queries.
 
     Use Model.select() to construct a query.
     """
@@ -54,14 +57,12 @@ class Query:
         *,
         parameters: tuple[str, ...],
         steps: StepSelector | None = None,
-        run: RunLike | None = None,
         downloader: Downloader | None = None,
     ) -> None:
         self._catalogue = catalogue
         self._model = model
         self._parameters = parameters
         self._steps = steps
-        self._run = None if run is None else Run.coerce(run)
         self._downloader = downloader
 
     def __repr__(self) -> str:
@@ -110,15 +111,17 @@ class Query:
         require: Require = "complete",
     ) -> ResolvedRequest:
         """Freeze the query against one run.
+
+        Omitting ``run`` resolves against the newest run that satisfies the
+        query, given by latest_run().
         When require="complete" is set, any missing time step raises
         IncompleteRunError. With "partial" it is reported in the missing field
         instead. Open selectors such as Between() can never be incomplete.
         """
-        chosen = run if run is not None else self._run
-        if chosen is None:
+        if run is None:
             resolved_run = self.latest_run(require=require)
         else:
-            resolved_run = Run.coerce(chosen)
+            resolved_run = Run.coerce(run)
 
         assets: list[Asset] = []
         missing: list[MissingStep] = []

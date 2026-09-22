@@ -1,4 +1,5 @@
 from dwdopen import DWD
+from datetime import datetime
 
 with DWD() as dwd:
     print(dwd.nwp.models())
@@ -7,9 +8,17 @@ with DWD() as dwd:
     latest_run = icon_eu.latest_run(probe="T_2M")
     print(latest_run)
 
-    query = icon_eu.select(parameters=["T_2M"], run=latest_run)
+    query = icon_eu.select(parameters=["T_2M"])
     print(query)
-    query.resolve()
+
+    resolved_latest = query.resolve()
+    print(resolved_latest) # TODO pretty print
+    # print(query.resolve(run=datetime(year=2026, month=1, day=1)))
+
+    resolved_latest.download(destination="/media/root/Data/dwdopen_data/test/", combine="none")
+
+
+
 
 
 

@@ -206,3 +206,20 @@ def test_the_downloader_is_not_part_of_a_plan_identity():
         run=RUN, assets=(), resolved_at=RESOLVED_AT, downloader=downloader
     )
     assert a == b
+
+
+def test_a_query_carries_no_run():
+    """The run belongs to resolve()/download(), never to the selection.
+
+    Two ways to name a run would mean silent precedence, and would leave
+    combining two queries with different runs undefined.
+    """
+    import inspect
+
+    from dwdopen.nwp.model import Model
+    from dwdopen.nwp.query import Query
+
+    assert "run" not in inspect.signature(Model.select).parameters
+    assert "run" not in inspect.signature(Query.__init__).parameters
+    assert "run" in inspect.signature(Query.resolve).parameters
+    assert "run" in inspect.signature(Query.download).parameters
