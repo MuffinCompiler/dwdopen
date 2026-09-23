@@ -86,12 +86,6 @@ data.
 
 ### Vertical levels
 
-| level type | you pass | path holds |
-|---|---|---|
-| `"pressure"` (100) | hPa — `850` | Pa — `85000` |
-| `"model"` (150) | the index — `60` | `60` |
-| `"soil"` (106) | metres — `0.18` | `0.18` |
-
 ```python
 icon_eu.select(parameters="T", level_type="pressure", levels=[850, 500])
 icon_eu.select(parameters="T", level_type="model", levels=Between(60, 74))
