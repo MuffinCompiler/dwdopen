@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError, version
+
 from dwdopen.client import DWD, NWP
 from dwdopen.exceptions import (
     AmbiguousSelectionError,
@@ -50,4 +52,7 @@ __all__ = [
     "UnknownParameterError",
 ]
 
-__version__ = "0.1.0.dev0"
+try:
+    __version__ = version("dwdopen")
+except PackageNotFoundError:  # running from a source tree, not installed
+    __version__ = "0.0.0.dev0"

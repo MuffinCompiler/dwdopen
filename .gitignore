@@ -2,3 +2,11 @@
 .idea/
 .vscode/
 __pycache__/
+
+# GRIB output
+*.grib2
+*.grb2
+dist/
+
+build/
+*.egg-info/
