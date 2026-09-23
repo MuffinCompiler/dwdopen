@@ -15,6 +15,7 @@ from dwdopen._fileserver.http import HttpClient
 from dwdopen._fileserver.naming import local_name, temp_name
 from dwdopen.exceptions import DownloadError
 from dwdopen.nwp.request import Asset, CombineMode, Fetched
+from dwdopen.nwp.selectors import LevelType
 
 __all__ = ["HttpDownloader"]
 
@@ -179,3 +180,32 @@ class HttpDownloader:
             logger.info(message + " - this is a large request.", *args)
         else:
             logger.info(message, *args)
+
+        if combine == "all":
+            self._warn_about_mixed_level_types(assets)
+
+    @staticmethod
+    def _warn_about_mixed_level_types(assets: Sequence[Asset]) -> None:
+        """Warn when one file will hold several vertical coordinate types.
+        Concatenating them is legal GRIB2 and stays allowed, but readers do
+        struggle with it. CDO in particular wants one vertical axis per file.
+        """
+        kinds = {
+            asset.level_type.code
+            for asset in assets
+            if asset.level_type is not None
+        }
+        # A 2-D field alongside a 3-D one is also problematic.
+        if any(asset.level_type is None for asset in assets):
+            kinds.add(-1)
+        if len(kinds) > 1:
+            named = ", ".join(
+                "surface" if code == -1 else str(LevelType.of(code))
+                for code in sorted(kinds)
+            )
+            logger.warning(
+                "combining several level types into one file (%s). This is valid "
+                "GRIB2, but some readers want one vertical axis per file. "
+                "cdo splitzaxis, or combine=\"none\", separates them",
+                named,
+            )

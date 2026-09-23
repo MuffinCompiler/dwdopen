@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from decimal import Decimal
 
 from dwdopen.exceptions import (
+    AmbiguousSelectionError,
     InvalidSelectorError,
     NoMatchingRunError,
     UnknownParameterError,
@@ -18,6 +20,7 @@ from dwdopen.nwp.run import Run
 from dwdopen.nwp.selectors import (
     LevelSelector,
     LevelType,
+    LevelTypeLike,
     MemberSelector,
     SelectorValue,
     StepSelector,
@@ -116,7 +119,19 @@ class Model:
                     "parameter", name, available, context=f"model {self._name!r}"
                 )
             )
-        raise NotImplementedError("ParameterInfo population is not implemented yet")
+        return ParameterInfo(
+            model=self._name,
+            name=name,
+            level_types=tuple(self._catalogue.level_types(self._name, name)),
+        )
+
+    def levels(self, parameter: str, level_type: LevelTypeLike) -> list[Decimal]:
+        """Level values this parameter is published on, in DWD's own unit.
+        So Pa for pressure and metres for soil.
+        """
+        return self._catalogue.levels(
+            self._name, parameter, LevelType.coerce(level_type)
+        )
 
     def runs(self, *, probe: str | None = None) -> list[Run]:
         """Runs currently visible, oldest first.
@@ -149,7 +164,7 @@ class Model:
         *,
         parameters: str | Sequence[str],
         steps: StepSelector | None = None,
-        level_type: str | int | None = None,
+        level_type: LevelTypeLike | None = None,
         levels: LevelSelector | None = None,
         members: MemberSelector | None = None,
         **selectors: SelectorValue,
@@ -159,18 +174,21 @@ class Model:
         What it does not do is look at availability of runs or steps: that is
         resolve(), which is why one query can be resolved against several runs.
 
-         TODO levels and ensembles NYI
+        ``level_type`` takes a GRIB code (100), an alias ("pressure") or a
+        LevelType. It may be left out while the selection is unambiguous, i.e.
+        while every named parameter is only available on one, and all on the same
+        level type.
+        ``levels`` is in the readable unit: hPa for pressure, the bare index for
+        model levels, metres for soil.
+
+        TODO ensemble members NYI
         """
-        unsupported = {
-            "level_type": level_type,
-            "levels": levels,
-            "members": members,
-            **selectors,
-        }
+        unsupported = {"members": members, **selectors}
         given = sorted(name for name, value in unsupported.items() if value is not None)
         if given:
             raise NotImplementedError(
-                f"{', '.join(given)}: not supported yet. only SL det."
+                f"{', '.join(given)}: not supported yet. Ensemble members and "
+                f"ICON-ART wavelengths TODO"
             )
 
         names = (parameters,) if isinstance(parameters, str) else tuple(parameters)
@@ -186,10 +204,57 @@ class Model:
                     )
                 )
 
+        chosen_type = self._resolve_level_type(names, level_type, levels)
         return Query(
             self._catalogue,
             self._name,
             parameters=names,
             steps=steps,
+            level_type=chosen_type,
+            levels=levels,
             downloader=self._downloader,
         )
+
+    def _resolve_level_type(
+        self,
+        parameters: tuple[str, ...],
+        level_type: LevelTypeLike | None,
+        levels: LevelSelector | None,
+    ) -> LevelType | None:
+        """Work out which vertical coordinate the selection means.
+
+        Naming it explicitly always takes precedence. Leaving it out is allowed only if
+        the level type is unambiguous. Every selected parameter must be available
+        on the same level type, or on none at all.
+        """
+        if level_type is not None:
+            return LevelType.coerce(level_type)
+
+        per_parameter = {
+            name: self._catalogue.level_types(self._name, name) for name in parameters
+        }
+        candidates = {lt for types in per_parameter.values() for lt in types}
+
+        if not candidates:
+            if levels is not None:
+                flat = ", ".join(sorted(per_parameter))
+                raise InvalidSelectorError(
+                    f"levels were given but {flat} in {self._name!r} "
+                    f"{'is' if len(per_parameter) == 1 else 'are'} published on "
+                    f"a single level only, with no lvt1/lv1 in the path"
+                )
+            return None
+
+        if len(candidates) > 1:
+            ordered = sorted(candidates, key=lambda c: c.code)
+            listed = ", ".join(str(lt) for lt in ordered)
+            spread = "; ".join(
+                f"{name}: {', '.join(str(lt) for lt in types) or 'none'}"
+                for name, types in sorted(per_parameter.items())
+            )
+            raise AmbiguousSelectionError(
+                f"level type is ambiguous for this selection ({spread}). "
+                f"Pass level_type= to choose one of: {listed}"
+            )
+
+        return candidates.pop()

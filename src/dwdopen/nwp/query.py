@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import Literal
 
 from dwdopen.exceptions import (
@@ -24,7 +25,15 @@ from dwdopen.nwp.request import (
     ResolvedRequest,
 )
 from dwdopen.nwp.run import Run, RunLike
-from dwdopen.nwp.selectors import Between, Every, StepSelector
+from dwdopen.nwp.selectors import (
+    Between,
+    Every,
+    LevelScalar,
+    LevelSelector,
+    LevelType,
+    StepScalar,
+    StepSelector,
+)
 
 __all__ = ["Query"]
 
@@ -57,18 +66,23 @@ class Query:
         *,
         parameters: tuple[str, ...],
         steps: StepSelector | None = None,
+        level_type: LevelType | None = None,
+        levels: LevelSelector | None = None,
         downloader: Downloader | None = None,
     ) -> None:
         self._catalogue = catalogue
         self._model = model
         self._parameters = parameters
         self._steps = steps
+        self._level_type = level_type
+        self._levels = levels
         self._downloader = downloader
 
     def __repr__(self) -> str:
+        vertical = "" if self._level_type is None else f", levels={self._level_type}"
         return (
             f"{type(self).__name__}(model={self._model!r}, "
-            f"parameters={list(self._parameters)})"
+            f"parameters={list(self._parameters)}{vertical})"
         )
 
     def latest_run(
@@ -84,7 +98,13 @@ class Query:
         this is not the same as Model.latest_run.
         """
         probe = self._parameters[0]
-        candidates = self._catalogue.runs(self._model, probe=probe)
+        probe_levels = self._wanted_levels(probe)
+        candidates = self._catalogue.runs(
+            self._model,
+            probe=probe,
+            level_type=self._level_type,
+            level=probe_levels[0] if probe_levels else None,
+        )
         now = datetime.now(UTC)
 
         for run in reversed(candidates):
@@ -127,7 +147,13 @@ class Query:
         missing: list[MissingStep] = []
         # Get the assets for every parameter.
         for parameter in self._parameters:
-            available = self._catalogue.assets(self._model, parameter, resolved_run)
+            available = self._catalogue.assets(
+                self._model,
+                parameter,
+                resolved_run,
+                level_type=self._level_type,
+                levels=self._wanted_levels(parameter),
+            )
             wanted, absent = _select_steps(available, self._steps)
             assets.extend(wanted)
             missing.extend(MissingStep(parameter, step) for step in absent)
@@ -150,6 +176,16 @@ class Query:
             downloader=self._downloader,
         )
 
+    def _wanted_levels(self, parameter: str) -> list[Decimal] | None:
+        """Which levels to fetch for one parameter, in server units.
+        Fetches all available levels, and then selects the ones according to
+        the self._levels range set by the user.
+        """
+        if self._level_type is None:
+            return None
+        available = self._catalogue.levels(self._model, parameter, self._level_type)
+        return _select_levels(available, self._levels, self._level_type)
+
     def download(
         self,
         destination: str | os.PathLike[str],
@@ -166,6 +202,64 @@ class Query:
         return self.resolve(run=run, require=require).download(
             destination, combine=combine, temp_dir=temp_dir
         )
+
+
+def _select_levels(
+    available: Sequence[Decimal], selector: LevelSelector | None, kind: LevelType
+) -> list[Decimal]:
+    """Pick the levels a selector asks for, in the unit DWD writes.
+
+    ``available`` comes from the catalogue and is already in server units, so
+    every user-facing value is converted before it is compared.
+    """
+    if selector is None or selector == "all":
+        return list(available)
+
+    offered = set(available)
+
+    if isinstance(selector, Between):
+        low = None if selector.start is None else kind.to_server(selector.start)
+        high = None if selector.stop is None else kind.to_server(selector.stop)
+        return [
+            value
+            for value in available
+            if (low is None or value >= low) and (high is None or value <= high)
+        ]
+
+    if isinstance(selector, Every):
+        wanted = _expand_level_cadence(selector, kind)
+    elif isinstance(selector, int | float | Decimal):
+        wanted = [kind.to_server(selector)]
+    else:
+        wanted = [kind.to_server(item) for item in selector]
+
+    unknown = [value for value in wanted if value not in offered]
+    if unknown:
+        raise InvalidSelectorError(
+            f"{kind} has no level "
+            f"{', '.join(str(kind.to_user(v)) for v in unknown)}"
+            + (f" ({kind.user_unit})" if kind.user_unit else "")
+            + ". Available: "
+            + ", ".join(str(kind.to_user(v)) for v in sorted(available))
+        )
+    return wanted
+
+
+def _expand_level_cadence(
+    selector: Every[LevelScalar], kind: LevelType
+) -> list[Decimal]:
+    """Every(1, 10, 1) over model levels -> 1, 2, ..., 10 (inclusive)."""
+    start = kind.to_server(selector.start)
+    stop = kind.to_server(selector.stop)
+    step = kind.to_server(selector.every)
+    if step <= 0:
+        raise InvalidSelectorError(f"a level cadence must be positive, got {step}")
+    values = []
+    current = start
+    while current <= stop:
+        values.append(current)
+        current += step
+    return values
 
 
 def _still_publishing(
@@ -188,7 +282,9 @@ def _select_steps(
     if selector is None or selector == "all":
         return list(available), []
 
-    by_step = {asset.step: asset for asset in available}
+    by_step: dict[timedelta, list[Asset]] = {}
+    for asset in available:
+        by_step.setdefault(asset.step, []).append(asset)
 
     # Between: Check every assets time and put ones in chosen that are in the interval.
     if isinstance(selector, Between):
@@ -211,12 +307,12 @@ def _select_steps(
         wanted = [parse_duration(item) for item in selector]
 
     # Look whether the wanted steps are available in the assets.
-    found = [by_step[step] for step in wanted if step in by_step]
+    found = [asset for step in wanted for asset in by_step.get(step, ())]
     absent = [step for step in wanted if step not in by_step]
     return found, absent
 
 
-def _expand_cadence(selector: Every) -> list[timedelta]:
+def _expand_cadence(selector: Every[StepScalar]) -> list[timedelta]:
     """Every("0h", "48h", "3h") -> 0h, 3h, ..., 48h (inclusive interval)."""
     start = parse_duration(selector.start)
     stop = parse_duration(selector.stop)

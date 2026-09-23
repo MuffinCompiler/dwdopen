@@ -6,15 +6,28 @@ TODO add caching
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor
+from decimal import Decimal
+from typing import TypeVar
+
 from dwdopen._fileserver.http import HttpClient
 from dwdopen._fileserver.listing import ListingEntry, parse_listing
 from dwdopen._fileserver.paths import Segment, build_path
-from dwdopen.exceptions import CatalogueUnavailableError, RunExpiredError
+from dwdopen.exceptions import (
+    CatalogueUnavailableError,
+    MissingAssetError,
+    RunExpiredError,
+)
 from dwdopen.nwp.durations import parse_duration
 from dwdopen.nwp.request import Asset
 from dwdopen.nwp.run import Run
+from dwdopen.nwp.selectors import LevelType
 
 __all__ = ["OpenDataCatalogue"]
+
+_T = TypeVar("_T")
+_R = TypeVar("_R")
 
 GRIB_SUFFIX = ".grib2"
 
@@ -24,6 +37,12 @@ RUN_KEY = "r"
 Anything else there (lvt1 for a 3-D field, wvl1 for ICON-ART) means the run
 listing is deeper down the path.
 """
+
+LEVEL_TYPE_KEY = "lvt1"
+"""GRIB typeOfFirstFixedSurface. Absent for a 2-D field."""
+
+LEVEL_KEY = "lv1"
+"""The level value, in the unit that level type uses."""
 
 STEP_KEY = "s"
 """The key holding the step files. Always the last key of a path.
@@ -40,8 +59,9 @@ class OpenDataCatalogue:
     can pass a "fake".
     """
 
-    def __init__(self, http: HttpClient) -> None:
+    def __init__(self, http: HttpClient, *, max_workers: int = 16) -> None:
         self._http = http
+        self._max_workers = max_workers
 
     def models(self) -> list[str]:
         """Model names currently visible, sorted."""
@@ -56,9 +76,16 @@ class OpenDataCatalogue:
         parameter_names = [entry.name for entry in parameter_entries]
         return sorted(parameter_names)
 
-    def runs(self, model: str, *, probe: str | None = None) -> list[Run]:
+    def runs(
+        self,
+        model: str,
+        *,
+        probe: str | None = None,
+        level_type: LevelType | None = None,
+        level: Decimal | None = None,
+    ) -> list[Run]:
         """Runs visible for the model, oldest first.
-        ``probe`` names the parameter to look under, because the DWD layout has
+        ``probe`` names the parameter (and level if 3-D) to look under, because the DWD layout has
         the runs below the parameters, so we need to choose a parameter to check
         for available runs (for that parameter!).
 
@@ -70,13 +97,94 @@ class OpenDataCatalogue:
                 "picking a probe parameter automatically is not implemented yet. "
                 "pass probe=... explicitly"
             )
-        run_entries = self._run_entries((("m", model), ("p", probe)))
+        run_entries = self._run_entries(
+            self._prefix(model, probe, level_type, level)
+        )
         runs = [Run.coerce(entry.name) for entry in run_entries]
         return sorted(runs)
 
-    def assets(self, model: str, parameter: str, run: Run) -> list[Asset]:
+    def _prefix(
+        self,
+        model: str,
+        parameter: str,
+        level_type: LevelType | None,
+        level: Decimal | None,
+    ) -> tuple[Segment, ...]:
+        """The path down to, but not including, the run key."""
+        where: tuple[Segment, ...] = (("m", model), ("p", parameter))
+        if level_type is None or level is None:
+            return where
+        tokens = self._level_tokens(model, parameter, level_type)
+        token = tokens.get(level)
+        if token is None:
+            raise MissingAssetError(
+                f"{model}/{parameter} has no level {level} on {level_type}. "
+                f"Available: {', '.join(str(v) for v in sorted(tokens))}"
+            )
+        return (
+            *where,
+            (LEVEL_TYPE_KEY, str(level_type.code)),
+            (LEVEL_KEY, token),
+        )
+
+    def level_types(self, model: str, parameter: str) -> list[LevelType]:
+        """Vertical coordinate types this parameter is published on, sorted."""
+        below = [e.name for e in self._subdirectories(("m", model), ("p", parameter))]
+        if LEVEL_TYPE_KEY not in below:
+            return []
+        entries = self._subdirectories(
+            ("m", model), ("p", parameter), key=LEVEL_TYPE_KEY
+        )
+        return sorted(
+            (LevelType.of(int(entry.name)) for entry in entries),
+            key=lambda lt: lt.code,
+        )
+
+    def levels(
+        self, model: str, parameter: str, level_type: LevelType
+    ) -> list[Decimal]:
+        """Level values available, in the unit DWD writes them in."""
+        return sorted(self._level_tokens(model, parameter, level_type))
+
+    def assets(
+        self,
+        model: str,
+        parameter: str,
+        run: Run,
+        *,
+        level_type: LevelType | None = None,
+        levels: Sequence[Decimal] | None = None,
+    ) -> list[Asset]:
         """Every asset of one parameter in one run in one model."""
-        where = (("m", model), ("p", parameter))
+        base = (("m", model), ("p", parameter))
+        if level_type is None or levels is None:
+            return self._assets_below(base, parameter, run, None, None)
+
+        prefixes = [
+            (self._prefix(model, parameter, level_type, level), level)
+            for level in levels
+        ]
+
+        found: list[Asset] = []
+        # Collect assets for each level.
+        for batch in self._in_parallel(
+            lambda item: self._assets_below(
+                item[0], parameter, run, level_type, item[1]
+            ),
+            prefixes,
+        ):
+            found.extend(batch)
+        return found
+
+    def _assets_below(
+        self,
+        where: tuple[Segment, ...],
+        parameter: str,
+        run: Run,
+        level_type: LevelType | None,
+        level: Decimal | None,
+    ) -> list[Asset]:
+        """The step files under one fully-qualified prefix."""
         token = self._run_token(where, parameter, run)
 
         # Straight for the step files. A deterministic model has them directly
@@ -101,9 +209,34 @@ class OpenDataCatalogue:
                     path=build_path(*keys, directory=False),
                     size=entry.size,
                     modified=entry.modified,
+                    level_type=level_type,
+                    level=level,
                 )
             )
         return assets
+
+    def _level_tokens(
+        self, model: str, parameter: str, level_type: LevelType
+    ) -> dict[Decimal, str]:
+        """Map each available level onto the exact token the server uses.
+        """
+        entries = self._subdirectories(
+            ("m", model),
+            ("p", parameter),
+            (LEVEL_TYPE_KEY, str(level_type.code)),
+            key=LEVEL_KEY,
+        )
+        return {Decimal(entry.name): entry.name for entry in entries}
+
+    def _in_parallel(
+        self, work: Callable[[_T], _R], items: Sequence[_T]
+    ) -> list[_R]:
+        """Run one listing job per item, bounded, preserving input order."""
+        if len(items) <= 1:
+            return [work(item) for item in items]
+        workers = min(self._max_workers, len(items))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            return list(pool.map(work, items))
 
     def _run_entries(self, where: tuple[Segment, ...]) -> list[ListingEntry]:
         """List the run directories of one parameter.
@@ -133,10 +266,10 @@ class OpenDataCatalogue:
             # The key is there, so the failure was not about the layout.
             return
         raise NotImplementedError(
-            f"{build_path(*where)} contains {'/, '.join(found)}/, "
-            f"not {expected}/. levels (lvt1/lv1), wavelengths (wvl1) and "
-            f"ensemble members (e) are not supported yet, only single-level "
-            f"deterministic parameters"
+            f"{build_path(*where)} contains {'/, '.join(found)}/, not "
+            f"{expected}/. Wavelengths (wvl1, ICON-ART) and ensemble members "
+            f"(e) are not supported yet. For a level type pass level_type= "
+            f"and levels= to select()"
         )
 
     def _run_token(self, where: tuple[Segment, ...], parameter: str, run: Run) -> str:
@@ -147,9 +280,11 @@ class OpenDataCatalogue:
             if Run.coerce(entry.name) == run:
                 return entry.name
         raise RunExpiredError(
-            f"run {run} is not available for {parameter}. A forecast is available for only "
+            f"run {run} is not available for {parameter}. A forecast is "
+            f"available for only "
             f"about 24 hours on the DWD server. If you are within this time frame, "
-            f"either the run is not published yet or not available due to other reasons. "
+            f"either the run is not published yet or not available for "
+            f"other reasons. "
             f"Check the availability directly on https://opendata.dwd.de/"
         )
 

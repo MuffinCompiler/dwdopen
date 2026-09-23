@@ -53,3 +53,43 @@ def test_separate_download_names_files_after_their_keys(tmp_path):
     assert name.endswith("_s-PT000H00M.grib2")
     assert ":" not in name  # Windows would reject the run timestamp otherwise
     assert grib_messages(result.files[0]) == 1
+
+
+def test_model_levels_download_as_one_file_per_level_and_step(tmp_path):
+    with DWD() as dwd:
+        query = dwd.nwp.model("icon-eu").select(
+            parameters="T", level_type="model", levels=[60, 62, 64],
+            steps=["0h", "1h"],
+        )
+        plan = query.resolve()
+
+        # Time-major with the level breaking the tie inside a step.
+        assert [(a.step, a.level) for a in plan.assets] == sorted(
+            (a.step, a.level) for a in plan.assets
+        )
+        result = plan.download(tmp_path / "levels.grib2", combine="all")
+
+    assert result.assets_downloaded == 6
+    assert grib_messages(result.files[0]) == 6
+
+
+def test_pressure_levels_are_given_in_hpa(tmp_path):
+    with DWD() as dwd:
+        plan = dwd.nwp.model("icon-eu").select(
+            parameters="T", level_type="pressure", levels=[850, 500], steps="0h"
+        ).resolve()
+
+    # 850 hPa is 85000 Pa in the path; the conversion happens once, here.
+    assert sorted(str(a.level) for a in plan.assets) == ["50000", "85000"]
+    assert all("/lvt1/100/" in a.path for a in plan.assets)
+
+
+def test_an_ambiguous_level_type_is_refused(tmp_path):
+    from dwdopen.exceptions import AmbiguousSelectionError
+
+    # T really is on both pressure and model levels for icon-eu.
+    with (
+        DWD() as dwd,
+        pytest.raises(AmbiguousSelectionError, match="level type is ambiguous"),
+    ):
+        dwd.nwp.model("icon-eu").select(parameters="T", levels=[850])

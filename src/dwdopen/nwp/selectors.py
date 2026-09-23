@@ -8,6 +8,8 @@ from datetime import timedelta
 from decimal import Decimal
 from typing import Final, Generic, Literal, TypeVar
 
+from dwdopen.exceptions import InvalidSelectorError
+
 __all__ = [
     "KNOWN_LEVEL_TYPES",
     "Between",
@@ -15,6 +17,7 @@ __all__ = [
     "LevelScalar",
     "LevelSelector",
     "LevelType",
+    "LevelTypeLike",
     "MemberSelector",
     "SelectorValue",
     "StepScalar",
@@ -49,6 +52,13 @@ class LevelType:
     unit: str | None = None
     user_unit: str | None = None
 
+    scale: Decimal = Decimal(1)
+    """How many ``unit`` make one ``user_unit``.
+    Pressure is the only case so far: user facing is hPa, DWD writes Pa, so the
+    scale is 100 and 850 becomes the 85000 in the path. Model levels are bare
+    indices and soil levels are already metres, so both stay at 1.
+    """
+
     @classmethod
     def of(cls, code: int) -> LevelType:
         """Look up a code. An unknown code yields an unnamed LevelType."""
@@ -56,6 +66,35 @@ class LevelType:
         if known is not None:
             return known
         return cls(code=code)
+
+    @classmethod
+    def coerce(cls, value: LevelTypeLike) -> LevelType:
+        """Accept a code, an alias such as "pressure", or a LevelType."""
+        if isinstance(value, LevelType):
+            return value
+        if isinstance(value, int):
+            return cls.of(value)
+        for known in KNOWN_LEVEL_TYPES.values():
+            if known.alias == value:
+                return known
+        raise InvalidSelectorError(
+            f"unknown level type {value!r}. Use a GRIB code such as 100, or one "
+            f"of: " + ", ".join(
+                sorted(k.alias for k in KNOWN_LEVEL_TYPES.values() if k.alias)
+            )
+        )
+
+    def to_server(self, value: LevelScalar) -> Decimal:
+        """Convert a user-facing level value into what DWD writes in the path.
+
+        Decimal throughout, and built from str(), because soil levels are
+        fractions of a metre (0.005, 0.18).
+        """
+        return Decimal(str(value)) * self.scale
+
+    def to_user(self, value: Decimal) -> Decimal:
+        """The inverse of to_server, for error messages and repr."""
+        return value / self.scale
 
     def __str__(self) -> str:
         if self.alias:
@@ -66,7 +105,10 @@ class LevelType:
 KNOWN_LEVEL_TYPES: Final[Mapping[int, LevelType]] = {
     lt.code: lt
     for lt in (
-        LevelType(code=100, alias="pressure", unit="Pa", user_unit="hPa"),
+        LevelType(
+            code=100, alias="pressure", unit="Pa", user_unit="hPa",
+            scale=Decimal(100),
+        ),
         LevelType(code=150, alias="model", unit="index"),
         LevelType(code=106, alias="soil", unit="m"),
     )
@@ -74,6 +116,10 @@ KNOWN_LEVEL_TYPES: Final[Mapping[int, LevelType]] = {
 """Some known level types that actually occur in v1 paths.
 It may be extended freely; unknown codes keep working via LevelType.of.
 """
+
+LevelTypeLike = LevelType | int | str
+"""A level type given as the object, its GRIB code (100) or its alias
+("pressure"). The code is what ends up in the path."""
 
 
 T = TypeVar("T")

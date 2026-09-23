@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from decimal import Decimal
 from typing import Protocol
 
 from dwdopen.nwp.request import Asset
 from dwdopen.nwp.run import Run
+from dwdopen.nwp.selectors import LevelType
 
 __all__ = ["Catalogue"]
 
@@ -32,7 +35,14 @@ class Catalogue(Protocol):
         """
         ...
 
-    def runs(self, model: str, *, probe: str | None = None) -> list[Run]:
+    def runs(
+        self,
+        model: str,
+        *,
+        probe: str | None = None,
+        level_type: LevelType | None = None,
+        level: Decimal | None = None,
+    ) -> list[Run]:
         """Runs visible for the model, oldest first.
 
         ``probe`` names the parameter used to answer this. It exists because
@@ -46,9 +56,37 @@ class Catalogue(Protocol):
         """
         ...
 
-    def assets(self, model: str, parameter: str, run: Run) -> list[Asset]:
-        """Every asset of one parameter in one run.
+    def level_types(self, model: str, parameter: str) -> list[LevelType]:
+        """Vertical coordinate types this parameter is published on, sorted.
 
+        Empty for a 2-D field, which DWD writes with no lvt1 segment at all.
+        Several entries mean the name alone is ambiguous, for example T exists on both
+        pressure (100) and model levels (150).
+        """
+        ...
+
+    def levels(
+        self, model: str, parameter: str, level_type: LevelType
+    ) -> list[Decimal]:
+        """Level values available for one parameter on one level type, sorted.
+
+        In the unit DWD writes, so Pa for pressure and metres for soil.
+        Decimal because soil levels are fractions of a metre.
+        """
+        ...
+
+    def assets(
+        self,
+        model: str,
+        parameter: str,
+        run: Run,
+        *,
+        level_type: LevelType | None = None,
+        levels: Sequence[Decimal] | None = None,
+    ) -> list[Asset]:
+        """Every asset of one parameter in one run.
+        ``levels`` selects which levels to fetch, in server units, and is None
+        for a 2-D field.
         Raises RunExpiredError if the run is no longer on the server.
         """
         ...

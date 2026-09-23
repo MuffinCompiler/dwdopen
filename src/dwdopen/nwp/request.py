@@ -12,11 +12,14 @@ import os
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 from typing import Literal, Protocol
 
 from dwdopen.exceptions import DownloadError
+from dwdopen.nwp.durations import format_duration
 from dwdopen.nwp.run import Run
+from dwdopen.nwp.selectors import LevelType
 
 __all__ = [
     "Asset",
@@ -58,22 +61,59 @@ class Asset:
     might disagree on modification times slightly.
     """
 
+    level_type: LevelType | None = None
+    """None for a 2-D field."""
+
+    level: Decimal | None = None
+    """The level in the unit DWD writes, so Pa for pressure and metres for soil.
+    Decimal rather than float because soil levels are fractions of a metre
+    (0.005, 0.18), might become problematic with floating point representations.
+    """
+
     @property
     def parameter(self) -> str:
         return dict(self.keys)["p"]
 
-    def sort_key(self) -> tuple[timedelta, str]:
+    def describe_level(self) -> str:
+        """The vertical position in the unit a reader thinks in.
+
+        Empty for a 2-D field. Pressure comes back as "850 hPa" rather than the
+        85000 Pa of the path, because that is what was asked for.
+        """
+        if self.level_type is None or self.level is None:
+            return ""
+        value = self.level_type.to_user(self.level)
+        unit = self.level_type.user_unit or self.level_type.unit
+        if unit in (None, "index"):
+            return f"level {_trim(value)}"
+        return f"{_trim(value)} {unit}"
+
+    def __repr__(self) -> str:
+        parts = [self.parameter, format_duration(self.step)]
+        where = self.describe_level()
+        if where:
+            parts.insert(1, where)
+        if self.size is not None:
+            parts.append(_human_size(self.size))
+        return f"{type(self).__name__}({', '.join(parts)})"
+
+    def sort_key(self) -> tuple[timedelta, str, int, Decimal]:
         """Returns a key to sort the assets by.
-        Time first, parameter second, so that every field of one forecast step
-        sits together and the steps ascend.
+        Time first, parameter second, then the vertical coordinate, so that
+        every field of one forecast step sits together and the steps ascend.
         Even though in general, GRIB messages can be concatenated without having
         to sort them, some other software might expect some sorting. For example,
         CDO (Climate Data Operators) refuses GRIB files whose messages are not in
         increasing time order. Sorting parameter-major would lead to a GRIB file that
         CDO rejects. So we sort here time-major.
-        TODO: sort also levels, ens members...
+        TODO: sort also ens members...
         """
-        return (self.step, self.parameter)
+        return (
+            self.step,
+            self.parameter,
+            -1 if self.level_type is None else self.level_type.code,
+            Decimal(0) if self.level is None else self.level,
+        )
 
 
 @dataclass(frozen=True)
@@ -194,6 +234,44 @@ class ResolvedRequest:
             bytes_downloaded=fetched.bytes_downloaded,
         )
 
+    def __repr__(self) -> str:
+        """A summary, not an inventory.
+
+        A resolved 3-D request routinely holds hundreds or thousands of assets.
+        The default dataclass repr prints every one of them with its full key
+        tuple and path, which buries the three numbers anyone actually wants:
+        which run, how many files, how big. Use .assets to see them.
+        """
+        if not self.assets:
+            return f"{type(self).__name__}(run={self.run}, nothing selected)"
+
+        count = len(self.assets)
+        parts = [f"run={self.run}", f"{count} asset{'s' * (count != 1)}"]
+
+        size = self.total_size
+        parts.append(_human_size(size) if size is not None else "size unknown")
+
+        names = sorted({asset.parameter for asset in self.assets})
+        if len(names) <= 4:
+            parts.append(", ".join(names))
+        else:
+            parts.append(f"{len(names)} parameters")
+
+        kinds = {a.level_type for a in self.assets if a.level_type is not None}
+        if kinds:
+            levels = {a.level for a in self.assets if a.level is not None}
+            on = "/".join(str(k) for k in sorted(kinds, key=lambda k: k.code))
+            parts.append(f"on {on}, {len(levels)} level{'s' * (len(levels) != 1)}")
+
+        steps = sorted(asset.step for asset in self.assets)
+        first, last = format_duration(steps[0]), format_duration(steps[-1])
+        parts.append(f"steps {first}" if first == last else f"steps {first}..{last}")
+
+        if self.missing:
+            parts.append(f"{len(self.missing)} missing")
+
+        return f"{type(self).__name__}({', '.join(parts)})"
+
     @property
     def total_size(self) -> int | None:
         """Bytes to download, or None if the listing did not give sizes."""
@@ -203,3 +281,18 @@ class ResolvedRequest:
             return None
         # Sum over all the asset sizes
         return sum(size for size in sizes if size is not None)
+
+
+def _human_size(size: int) -> str:
+    """Bytes as something a person can read at a glance."""
+    value = float(size)
+    for unit in ("B", "KB", "MB", "GB"):
+        if value < 1024 or unit == "GB":
+            return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
+        value /= 1024
+    return f"{value:.1f} GB"
+
+
+def _trim(value: Decimal) -> str:
+    """Drop the trailing zeros a Decimal keeps: 850.00 -> 850, 0.180 -> 0.18."""
+    return format(value.normalize(), "f")

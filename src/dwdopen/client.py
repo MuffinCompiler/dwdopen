@@ -124,7 +124,9 @@ class DWD:
 
     def _ensure_catalogue(self) -> Catalogue:
         if self._catalogue is None:
-            self._catalogue = OpenDataCatalogue(self._http)
+            self._catalogue = OpenDataCatalogue(
+                self._http, max_workers=self._max_connections
+            )
         return self._catalogue
 
     def _ensure_downloader(self) -> Downloader:
