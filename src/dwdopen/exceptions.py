@@ -20,6 +20,7 @@ __all__ = [
     "SelectionError",
     "UnknownModelError",
     "UnknownParameterError",
+    "resolve_name",
     "unknown_name_message",
 ]
 
@@ -126,7 +127,14 @@ def unknown_name_message(
         subject += f" for {context}"
     parts = [subject + "."]
 
-    close = get_close_matches(name, available, n=3, cutoff=0.6)
+    # Fold the case before comparing. DWD's own documentation writes the same
+    # parameter both ways, and the legacy layout used lowercase where v1 uses
+    # uppercase, so a wrong-case name is a likely mistake rather than a typo.
+    # Compared case-sensitively, "t_2m" scores below the cutoff against "T_2M"
+    # and the caller gets no suggestion at all.
+    folded = {item.casefold(): item for item in available}
+    matches = get_close_matches(name.casefold(), list(folded), n=3, cutoff=0.6)
+    close = [folded[match] for match in matches]
     if close:
         parts.append("Did you mean " + " or ".join(close) + "?")
 
@@ -136,3 +144,16 @@ def unknown_name_message(
         parts.append(f"{len(available)} names available.")
 
     return " ".join(parts)
+
+
+def resolve_name(name: str, available: Sequence[str]) -> str | None:
+    """Find the catalogue's own spelling of a name, ignoring case.
+    Returns None when nothing matches, leaving the error to the caller.
+    """
+    if name in available:
+        return name
+    wanted = name.casefold()
+    for candidate in available:
+        if candidate.casefold() == wanted:
+            return candidate
+    return None

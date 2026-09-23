@@ -9,7 +9,11 @@ from typing import Self
 from dwdopen._fileserver.download import HttpDownloader
 from dwdopen._fileserver.http import HttpClient
 from dwdopen._fileserver.traversal import OpenDataCatalogue
-from dwdopen.exceptions import UnknownModelError, unknown_name_message
+from dwdopen.exceptions import (
+    UnknownModelError,
+    resolve_name,
+    unknown_name_message,
+)
 from dwdopen.nwp.catalogue import Catalogue
 from dwdopen.nwp.model import Model
 from dwdopen.nwp.request import Downloader
@@ -45,18 +49,15 @@ class NWP:
 
     def model(self, name: str) -> Model:
         """A handle on one model.
-
-        The name is validated against the catalogue, so a typo fails here
-        rather than inside a later query. Model names use hyphens while
-        parameter names use underscores.
-
+        The name is validated against the catalogue, case-insensitive.
         This is therefore the first call that may touch the network. The model
         listing is cached, so further calls are free (or until cache has been invalidated).
         """
         available = self._catalogue.models()
-        if name not in available:
+        canonical = resolve_name(name, available)
+        if canonical is None:
             raise UnknownModelError(unknown_name_message("model", name, available))
-        return Model(name, self._catalogue, self._downloader)
+        return Model(canonical, self._catalogue, self._downloader)
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}()"

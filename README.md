@@ -139,12 +139,12 @@ retries and mixed level types.
 
 ## Not yet implemented
 
-Roughly in the order they are planned:
-
 - [ ] Resume and skip existing files. A failed run currently re-downloads from scratch.
+- [ ] Automatic generation of download file name (see get_task_name on NRT)
 - [ ] Ensemble members** (`-eps` models, the `e/<NN>/` path segment).
 - [ ] `combine="member"` and `combine="parameter"`.
 - [ ] Listing cache. Every call re-reads the catalogue today.
+- [ ] Feedback of download progress (bar, text, visual?)
 - [ ] ICON-ART wavelengths (the `wvl1` segment).
 - [ ] A command-line interface.
 - [ ] Automatic probe parameter for `Model.latest_run()`, which needs `probe=` at the moment.

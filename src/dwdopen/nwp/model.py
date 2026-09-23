@@ -11,6 +11,7 @@ from dwdopen.exceptions import (
     InvalidSelectorError,
     NoMatchingRunError,
     UnknownParameterError,
+    resolve_name,
     unknown_name_message,
 )
 from dwdopen.nwp.catalogue import Catalogue
@@ -112,25 +113,35 @@ class Model:
         "static" parameter here is not checking available runs, the steps and
         members might have no definite answer.
         """
-        available = self._catalogue.parameters(self._name)
-        if name not in available:
-            raise UnknownParameterError(
-                unknown_name_message(
-                    "parameter", name, available, context=f"model {self._name!r}"
-                )
-            )
+        name = self._resolve_parameter(name)
         return ParameterInfo(
             model=self._name,
             name=name,
             level_types=tuple(self._catalogue.level_types(self._name, name)),
         )
 
+    def _resolve_parameter(self, name: str) -> str:
+        """The catalogue's own spelling of a parameter name.
+        The legacy layout wrote t_2m, where v1 writes now T_2M and DWD's
+        manual uses both. Basically checking if the uppercase spelling is
+        in the parameter database.
+        """
+        available = self._catalogue.parameters(self._name)
+        canonical = resolve_name(name, available)
+        if canonical is None:
+            raise UnknownParameterError(
+                unknown_name_message(
+                    "parameter", name, available, context=f"model {self._name!r}"
+                )
+            )
+        return canonical
+
     def levels(self, parameter: str, level_type: LevelTypeLike) -> list[Decimal]:
         """Level values this parameter is published on, in DWD's own unit.
         So Pa for pressure and metres for soil.
         """
         return self._catalogue.levels(
-            self._name, parameter, LevelType.coerce(level_type)
+            self._name, self._resolve_parameter(parameter), LevelType.coerce(level_type)
         )
 
     def runs(self, *, probe: str | None = None) -> list[Run]:
@@ -195,14 +206,7 @@ class Model:
         if not names:
             raise InvalidSelectorError("select() needs at least one parameter")
 
-        available = self._catalogue.parameters(self._name)
-        for name in names:
-            if name not in available:
-                raise UnknownParameterError(
-                    unknown_name_message(
-                        "parameter", name, available, context=f"model {self._name!r}"
-                    )
-                )
+        names = tuple(self._resolve_parameter(name) for name in names)
 
         chosen_type = self._resolve_level_type(names, level_type, levels)
         return Query(
