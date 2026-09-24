@@ -208,3 +208,11 @@ def test_mixed_level_types_in_one_file_warn_but_are_allowed(caplog):
     with caplog.at_level(logging.WARNING, logger="dwdopen"):
         HttpDownloader._warn_about_mixed_level_types([pressure, pressure])
     assert caplog.text == ""
+
+
+# --- time-invariant fields ------------------------------------------------
+
+def test_an_invariant_field_is_selected_without_a_level_type():
+    # HSURF, CLAT, FR_LAND and friends are plain 2-D parameters in v1.
+    model = model_with({"HSURF": []})
+    assert model.select(parameters="HSURF", steps="0h")._level_type is None

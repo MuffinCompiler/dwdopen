@@ -77,11 +77,12 @@ class LevelType:
         for known in KNOWN_LEVEL_TYPES.values():
             if known.alias == value:
                 return known
+        aliases = ", ".join(
+            sorted(k.alias for k in KNOWN_LEVEL_TYPES.values() if k.alias)
+        )
         raise InvalidSelectorError(
-            f"unknown level type {value!r}. Use a GRIB code such as 100, or one "
-            f"of: " + ", ".join(
-                sorted(k.alias for k in KNOWN_LEVEL_TYPES.values() if k.alias)
-            )
+            f"unknown level type {value!r}. Use a GRIB code such as 100, or "
+            f"one of: {aliases}. A 2-D field takes no level type at all"
         )
 
     def to_server(self, value: LevelScalar) -> Decimal:

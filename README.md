@@ -101,7 +101,14 @@ icon_eu.select(parameters="T_SO", level_type="soil", levels="all")
 
 `level_type` may be left out only while the selection is unambiguous. `T` is available on
 both pressure and model levels, so omitting it raises `AmbiguousSelectionError` rather
-than guessing. A 2-D field such as `T_2M` needs no level type at all.
+than guessing. A 2-D field such as `T_2M` needs no level type at all. Time-invariant fields
+need no level type either. These are published under every run with a single step.
+`HHL` is the exception, being model half-level heights:
+
+```python
+icon_d2.select(parameters="HSURF", steps="0h")                      # no level type
+icon_d2.select(parameters="HHL", level_type="model", levels="all")
+```
 
 ## Downloading
 

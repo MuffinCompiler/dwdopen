@@ -93,3 +93,29 @@ def test_an_ambiguous_level_type_is_refused(tmp_path):
         pytest.raises(AmbiguousSelectionError, match="level type is ambiguous"),
     ):
         dwd.nwp.model("icon-eu").select(parameters="T", levels=[850])
+
+
+def test_a_time_invariant_field_is_a_plain_parameter_with_one_step(tmp_path):
+    """v1 keeps no separate time-invariant tree.
+    HSURF is published under every run like any other parameter, and simply
+    has a single step.
+    """
+    with DWD() as dwd:
+        icon_d2 = dwd.nwp.model("icon-d2")
+        assert icon_d2.parameter("HSURF").level_types == ()
+
+        plan = icon_d2.select(parameters="HSURF", steps="all").resolve()
+        assert len(plan.assets) == 1
+        assert plan.assets[0].step.total_seconds() == 0
+        assert "/lvt1/" not in plan.assets[0].path
+
+        result = plan.download(tmp_path / "hsurf.grib2")
+
+    assert grib_messages(result.files[0]) == 1
+
+
+def test_hhl_is_the_invariant_field_that_does_need_a_level_type(tmp_path):
+    # Model half-level heights really are 3-D, unlike the other invariants.
+    with DWD() as dwd:
+        info = dwd.nwp.model("icon-d2").parameter("HHL")
+        assert [t.alias for t in info.level_types] == ["model"]
