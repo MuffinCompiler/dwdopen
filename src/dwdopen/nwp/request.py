@@ -31,6 +31,10 @@ __all__ = [
     "ResolvedRequest",
 ]
 
+MAX_NAME_LENGTH = 120
+"""Longest generated file name, in characters.
+"""
+
 CombineMode = Literal["none", "all"]
 """How the downloaded messages are laid out on disk.
 TODO add member and per parameter
@@ -73,6 +77,10 @@ class Asset:
     @property
     def parameter(self) -> str:
         return dict(self.keys)["p"]
+
+    @property
+    def model(self) -> str:
+        return dict(self.keys)["m"]
 
     def describe_level(self) -> str:
         """The vertical position in the unit a reader thinks in.
@@ -212,6 +220,9 @@ class ResolvedRequest:
         ``destination`` is a file for combine="all" and a directory for
         combine="none".
 
+        With combine="all" a destination that is an existing directory, or that
+        ends with a separator, suggested_name() is called to generate a file name.
+
         ``temp_dir`` moves in-progress downloads elsewhere, for instance off
         a small home partition. It has to be on the same filesystem as the
         destination, because the finished file is published by renaming it.
@@ -223,7 +234,7 @@ class ResolvedRequest:
             )
         fetched = self.downloader.fetch(
             self.assets,
-            Path(destination),
+            self._target(destination, combine),
             combine=combine,
             temp_dir=None if temp_dir is None else Path(temp_dir),
         )
@@ -234,13 +245,90 @@ class ResolvedRequest:
             bytes_downloaded=fetched.bytes_downloaded,
         )
 
-    def __repr__(self) -> str:
-        """A summary, not an inventory.
+    def _target(
+        self, destination: str | os.PathLike[str], combine: CombineMode
+    ) -> Path:
+        """Returns the path where the data should go.
 
-        A resolved 3-D request routinely holds hundreds or thousands of assets.
-        The default dataclass repr prints every one of them with its full key
-        tuple and path, which buries the three numbers anyone actually wants:
-        which run, how many files, how big. Use .assets to see them.
+        combine="none" already expects a directory, so it is passed through. For
+        combine="all" a directory is only recognized when it exists or when the
+        caller wrote a trailing separator.
+        If needed, a name is generated via suggested_name().
+        """
+        path = Path(destination)
+        if combine != "all":
+            return path
+        looks_like_a_directory = str(destination).endswith(("/", os.sep))
+        if path.is_dir() or looks_like_a_directory:
+            return path / self.suggested_name()
+        return path
+
+    def suggested_name(self, suffix: str = ".grib2") -> str:
+        """A file name describing the resolved request, human readable.
+        Contains model, the run, and step range::
+
+            icon-eu_2026-09-24T0600_T_2M+PMSL_0h-24h.grib2
+            icon_2026-09-24T0600_21params_0h-120h.grib2
+            icon-eu_2026-09-24T0600_T_850hPa_0h.grib2
+
+        More than three parameters are counted rather than listed.
+        """
+        if not self.assets:
+            raise DownloadError("cannot name an empty plan")
+
+        run = f"{self.run.reference_time:%Y-%m-%dT%H%M}"
+        tail = [self._describe_levels(), self._describe_steps()]
+        fixed = [self.assets[0].model, run, *(part for part in tail if part)]
+
+        name = self._assemble(fixed, self._describe_parameters(), suffix)
+        if len(name) <= MAX_NAME_LENGTH:
+            return name
+
+        # Count parameters instead of listing them if there are too many,
+        count = f"{len({a.parameter for a in self.assets})}params"
+        name = self._assemble(fixed, count, suffix)
+        if len(name) <= MAX_NAME_LENGTH:
+            return name
+
+        # Backup: trim if too long.
+        return name[: MAX_NAME_LENGTH - len(suffix)].rstrip("_+.") + suffix
+
+    @staticmethod
+    def _assemble(fixed: list[str], parameters: str, suffix: str) -> str:
+        """Put the parameter field back in its slot, after the run."""
+        return "_".join([fixed[0], fixed[1], parameters, *fixed[2:]]) + suffix
+
+    def _describe_parameters(self) -> str:
+        names = sorted({asset.parameter for asset in self.assets})
+        if len(names) <= 3:
+            return "+".join(names)
+        return f"{len(names)}params"
+
+    def _describe_levels(self) -> str:
+        """The vertical coordinate, empty for a 2-D selection."""
+        levels = {a.level for a in self.assets if a.level is not None}
+        kinds = {a.level_type for a in self.assets if a.level_type is not None}
+        if not kinds:
+            return ""
+        if len(kinds) > 1:
+            # Put number of level types
+            return f"{len(kinds)}lvt"
+        kind = kinds.pop()
+        if len(levels) == 1:
+            unit = kind.user_unit or kind.unit or ""
+            value = _trim(kind.to_user(levels.pop()))
+            return f"{value}{unit}" if unit != "index" else f"lv{value}"
+        return f"{len(levels)}lv"
+
+    def _describe_steps(self) -> str:
+        steps = sorted(asset.step for asset in self.assets)
+        first, last = format_duration(steps[0]), format_duration(steps[-1])
+        return first if first == last else f"{first}-{last}"
+
+    def __repr__(self) -> str:
+        """A resolved 3-D request could hold hundreds or thousands of assets.
+        This here prints a "summary" of the resolved request. Use .assets to
+        list them all.
         """
         if not self.assets:
             return f"{type(self).__name__}(run={self.run}, nothing selected)"

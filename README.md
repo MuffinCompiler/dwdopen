@@ -112,7 +112,14 @@ query.download("f.grib2", temp_dir="/scratch")      # partial downloads before c
 ```
 
 `combine="all"` concatenates the messages into a single GRIB2 file, which is valid
-because GRIB2 messages are self-delimiting.
+because GRIB2 messages are self-delimiting. You can also provide just a directory in
+this case and the name is generated automatically.
+
+```python
+plan = query.resolve()
+plan.suggested_name()            # 'icon-eu_2026-09-24T0600_PMSL+T_2M_0h-24h.grib2'
+plan.download("/home/weather/")   # writes that name into the directory
+```
 
 Messages are sorted time-major: every field of one forecast step together, steps
 ascending. Some programs like CDO require grib files to be sorted by time to work
@@ -141,7 +148,6 @@ retries and mixed level types.
 ## Not yet implemented
 
 - [ ] Resume and skip existing files. A failed run currently re-downloads from scratch.
-- [ ] Automatic generation of download file name (see get_task_name on NRT)
 - [ ] Ensemble members** (`-eps` models, the `e/<NN>/` path segment).
 - [ ] `combine="member"` and `combine="parameter"`.
 - [ ] Listing cache. Every call re-reads the catalogue today.
