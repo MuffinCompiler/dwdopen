@@ -7,7 +7,6 @@ from dwdopen.exceptions import (
     UnknownModelError,
     UnknownParameterError,
     resolve_name,
-    unknown_name_message,
 )
 
 AVAILABLE = ["T_2M", "TOT_PREC", "PMSL", "TD_2M"]

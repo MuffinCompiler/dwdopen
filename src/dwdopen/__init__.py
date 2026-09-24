@@ -21,6 +21,7 @@ from dwdopen.exceptions import (
     UnknownModelError,
     UnknownParameterError,
 )
+from dwdopen.nwp.durations import hours, minutes
 from dwdopen.nwp.model import Model, ParameterInfo
 from dwdopen.nwp.request import DownloadResult
 from dwdopen.nwp.run import Run
@@ -50,6 +51,8 @@ __all__ = [
     "SelectionError",
     "UnknownModelError",
     "UnknownParameterError",
+    "hours",
+    "minutes",
 ]
 
 try:

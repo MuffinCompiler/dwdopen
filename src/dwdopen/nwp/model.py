@@ -15,6 +15,7 @@ from dwdopen.exceptions import (
     unknown_name_message,
 )
 from dwdopen.nwp.catalogue import Catalogue
+from dwdopen.nwp.durations import check_step_selector
 from dwdopen.nwp.query import Query
 from dwdopen.nwp.request import Downloader
 from dwdopen.nwp.run import Run
@@ -201,6 +202,9 @@ class Model:
                 f"{', '.join(given)}: not supported yet. Ensemble members and "
                 f"ICON-ART wavelengths TODO"
             )
+
+        # Validate steps before accessing the network.
+        check_step_selector(steps)
 
         names = (parameters,) if isinstance(parameters, str) else tuple(parameters)
         if not names:

@@ -68,14 +68,21 @@ Steps are **durations**, ICON-D2 publishes precipitation every
 15 minutes and ICON-D2-RUC every 5.
 
 ```python
-from dwdopen import Between, Every
+from dwdopen import Between, Every, hours, minutes
 
 steps="6h"                        # exactly this step
 steps=["0h", "3h", "6h"]          # exactly these
 steps=Every("0h", "48h", "3h")    # interval, inclusive at both ends
 steps=Between("0h", "48h")        # whatever exists in the interval
 steps="all"                       # everything published
+
+steps=hours(0, 6, 12, 18)         # plain numbers, if that is what you have
+steps=hours(range(0, 121, 3))     # or any iterable of them
+steps=minutes(0, 15, 30)          # for the sub-hourly models
 ```
+
+`hours()` and `minutes()` turn a single number into a single duration, so they compose
+with the others too: `Every(hours(0), hours(48), hours(3))`.
 
 `Every` names exact steps, so a missing one makes the request incomplete. `Between` and
 `"all"` ask for whatever is there and can never be incomplete.

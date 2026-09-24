@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dwdopen.nwp.durations import hours, minutes
 from dwdopen.nwp.model import Model, ParameterInfo
 from dwdopen.nwp.query import Query
 from dwdopen.nwp.run import Run, RunLike
@@ -16,4 +17,6 @@ __all__ = [
     "Query",
     "Run",
     "RunLike",
+    "hours",
+    "minutes",
 ]
