@@ -102,7 +102,7 @@ class Asset:
         if where:
             parts.insert(1, where)
         if self.size is not None:
-            parts.append(_human_size(self.size))
+            parts.append(human_size(self.size))
         return f"{type(self).__name__}({', '.join(parts)})"
 
     def sort_key(self) -> tuple[timedelta, str, int, Decimal]:
@@ -337,7 +337,7 @@ class ResolvedRequest:
         parts = [f"run={self.run}", f"{count} asset{'s' * (count != 1)}"]
 
         size = self.total_size
-        parts.append(_human_size(size) if size is not None else "size unknown")
+        parts.append(human_size(size) if size is not None else "size unknown")
 
         names = sorted({asset.parameter for asset in self.assets})
         if len(names) <= 4:
@@ -351,9 +351,12 @@ class ResolvedRequest:
             on = "/".join(str(k) for k in sorted(kinds, key=lambda k: k.code))
             parts.append(f"on {on}, {len(levels)} level{'s' * (len(levels) != 1)}")
 
-        steps = sorted(asset.step for asset in self.assets)
+        steps = sorted({asset.step for asset in self.assets})
         first, last = format_duration(steps[0]), format_duration(steps[-1])
-        parts.append(f"steps {first}" if first == last else f"steps {first}..{last}")
+        if len(steps) == 1:
+            parts.append(f"steps {first}")
+        else:
+            parts.append(f"{len(steps)} steps {first}..{last}")
 
         if self.missing:
             parts.append(f"{len(self.missing)} missing")
@@ -371,7 +374,7 @@ class ResolvedRequest:
         return sum(size for size in sizes if size is not None)
 
 
-def _human_size(size: int) -> str:
+def human_size(size: int) -> str:
     """Bytes as something a person can read at a glance."""
     value = float(size)
     for unit in ("B", "KB", "MB", "GB"):

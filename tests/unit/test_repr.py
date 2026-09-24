@@ -88,6 +88,27 @@ def test_a_single_step_is_not_shown_as_a_range():
     text = repr(plan([asset("T_2M", 6), asset("PMSL", 6)]))
     assert "steps 6h" in text
     assert ".." not in text
+    assert "1 step" not in text  # redundant when there is only one
+
+
+def test_the_step_count_is_shown_next_to_the_range():
+    """A range alone reads like the whole forecast when it may be 3-hourly."""
+    every_third = [asset("P", h) for h in range(0, 181, 3)]
+    text = repr(plan(every_third))
+    assert "61 steps 0h..180h" in text
+
+
+def test_the_counts_multiply_out_to_the_asset_count():
+    # 3 levels x 4 steps = 12 assets, so a reader can sanity-check the plan.
+    assets = [
+        asset("P", h, level_type=MODEL, level=lv)
+        for h in (0, 3, 6, 9)
+        for lv in (1, 2, 3)
+    ]
+    text = repr(plan(assets))
+    assert "12 assets" in text
+    assert "3 levels" in text
+    assert "4 steps" in text
 
 
 def test_many_parameters_are_counted_rather_than_listed():

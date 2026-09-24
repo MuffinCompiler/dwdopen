@@ -223,3 +223,24 @@ def test_a_query_carries_no_run():
     assert "run" not in inspect.signature(Query.__init__).parameters
     assert "run" in inspect.signature(Query.resolve).parameters
     assert "run" in inspect.signature(Query.download).parameters
+
+
+def test_a_finished_download_says_where_it_went(tmp_path, caplog):
+    """A long transfer otherwise finishes in silence, leaving nothing in an
+    unattended run's log to say it worked or where the file is.
+    """
+    import logging
+
+    assets = [asset("T_2M", 0, b""), asset("T_2M", 3, b"")]
+    downloader, _, _ = build(assets)
+
+    with caplog.at_level(logging.INFO, logger="dwdopen"):
+        downloader.fetch(assets, tmp_path / "out.grib2", combine="all")
+    assert "saved" in caplog.text
+    assert "out.grib2" in caplog.text
+
+    caplog.clear()
+    with caplog.at_level(logging.INFO, logger="dwdopen"):
+        downloader.fetch(assets, tmp_path / "many", combine="none")
+    assert "saved 2 files" in caplog.text
+    assert "many" in caplog.text

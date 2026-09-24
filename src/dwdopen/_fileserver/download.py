@@ -14,7 +14,7 @@ from pathlib import Path
 from dwdopen._fileserver.http import HttpClient
 from dwdopen._fileserver.naming import local_name, temp_name
 from dwdopen.exceptions import DownloadError
-from dwdopen.nwp.request import Asset, CombineMode, Fetched
+from dwdopen.nwp.request import Asset, CombineMode, Fetched, human_size
 from dwdopen.nwp.selectors import LevelType
 
 __all__ = ["HttpDownloader"]
@@ -71,8 +71,11 @@ class HttpDownloader:
 
         self._announce(assets, destination, combine)
         if combine == "none":
-            return self._fetch_separately(assets, destination, temp_dir)
-        return self._fetch_combined(assets, destination, temp_dir)
+            fetched = self._fetch_separately(assets, destination, temp_dir)
+        else:
+            fetched = self._fetch_combined(assets, destination, temp_dir)
+        self._report(fetched, combine)
+        return fetched
 
     # --- layouts ----------------------------------------------------------
 
@@ -173,7 +176,7 @@ class HttpDownloader:
         """Announcing the download before it starts (e.g. inform user about size)."""
         known = [asset.size for asset in assets if asset.size is not None]
         total = sum(known) if len(known) == len(assets) else None
-        size = "unknown size" if total is None else f"{total / 1024**2:.1f} MB"
+        size = "unknown size" if total is None else human_size(total)
         message = "downloading %d assets (%s) to %s, combine=%s"
         args = (len(assets), size, destination, combine)
         if total is not None and total >= LARGE_DOWNLOAD:
@@ -183,6 +186,19 @@ class HttpDownloader:
 
         if combine == "all":
             self._warn_about_mixed_level_types(assets)
+
+    @staticmethod
+    def _report(fetched: Fetched, combine: CombineMode) -> None:
+        """Report the finished download.
+        """
+        size = human_size(fetched.bytes_downloaded)
+        if combine == "none":
+            logger.info(
+                "saved %d files (%s) to %s",
+                len(fetched.files), size, fetched.files[0].parent,
+            )
+        else:
+            logger.info("saved %s (%s)", fetched.files[0], size)
 
     @staticmethod
     def _warn_about_mixed_level_types(assets: Sequence[Asset]) -> None:
