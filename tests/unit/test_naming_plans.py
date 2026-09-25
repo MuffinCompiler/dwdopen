@@ -35,8 +35,10 @@ def plan(assets):
 
 
 def test_one_parameter_names_the_model_run_parameter_and_steps():
-    name = plan([asset("T_2M", 0), asset("T_2M", 12)]).suggested_name()
-    assert name == "icon-eu_2026-09-24T0600_T_2M_0h-12h.grib2"
+    made = plan([asset("T_2M", 0), asset("T_2M", 12)])
+    assert made.suggested_name() == (
+        f"icon-eu_2026-09-24T0600_T_2M_0h-12h_{made.fingerprint()}.grib2"
+    )
 
 
 def test_the_run_carries_no_colon_because_windows_rejects_it():
@@ -44,7 +46,8 @@ def test_the_run_carries_no_colon_because_windows_rejects_it():
 
 
 def test_a_single_step_is_not_written_as_a_range():
-    assert plan([asset("T_2M", 6)]).suggested_name().endswith("_6h.grib2")
+    made = plan([asset("T_2M", 6)])
+    assert f"_6h_{made.fingerprint()}" in made.suggested_name()
 
 
 def test_up_to_three_parameters_are_listed():
@@ -83,8 +86,10 @@ def test_a_soil_level_keeps_its_metres():
 
 
 def test_a_surface_selection_has_no_level_part():
-    name = plan([asset("T_2M")]).suggested_name()
-    assert name == "icon-eu_2026-09-24T0600_T_2M_0h.grib2"
+    made = plan([asset("T_2M")])
+    assert made.suggested_name() == (
+        f"icon-eu_2026-09-24T0600_T_2M_0h_{made.fingerprint()}.grib2"
+    )
 
 
 def test_the_suffix_can_be_changed():
@@ -99,25 +104,29 @@ def test_an_empty_plan_cannot_be_named():
 # --- choosing between a directory and a file ------------------------------
 
 def test_an_existing_directory_gets_a_generated_name(tmp_path):
-    target = plan([asset()])._target(tmp_path, "all")
+    target, generated = plan([asset()])._target(tmp_path, "all")
     assert target.parent == tmp_path
     assert target.name == plan([asset()]).suggested_name()
+    assert generated
 
 
 def test_a_trailing_separator_means_a_directory(tmp_path):
-    target = plan([asset()])._target(str(tmp_path / "later") + "/", "all")
+    target, generated = plan([asset()])._target(str(tmp_path / "later") + "/", "all")
     assert target.parent.name == "later"
     assert target.name.endswith(".grib2")
+    assert generated
 
 
 def test_a_plain_path_that_does_not_exist_is_a_file(tmp_path):
     # cp reads it this way too: no trailing slash and nothing there means file.
-    target = plan([asset()])._target(tmp_path / "out.grib2", "all")
+    target, generated = plan([asset()])._target(tmp_path / "out.grib2", "all")
     assert target == tmp_path / "out.grib2"
+    # We did not choose the name, so it tells us nothing about the plan.
+    assert not generated
 
 
 def test_combine_none_always_means_the_directory_itself(tmp_path):
-    assert plan([asset()])._target(tmp_path, "none") == tmp_path
+    assert plan([asset()])._target(tmp_path, "none") == (tmp_path, False)
 
 
 # --- staying inside a length budget ---------------------------------------
@@ -161,3 +170,36 @@ def test_the_suffix_survives_even_a_pathological_name():
     name = plan(assets).suggested_name()
     assert len(name) <= MAX_NAME_LENGTH
     assert name.endswith(".grib2")
+
+
+# --- the plan fingerprint -------------------------------------------------
+
+def test_the_same_plan_always_fingerprints_the_same():
+    assert plan([asset("T_2M")]).fingerprint() == plan([asset("T_2M")]).fingerprint()
+
+
+def test_plans_that_differ_only_in_a_dropped_field_get_different_names():
+    """The collision the readable fields alone could not avoid.
+
+    Two subsets of the same parameters, same run, same steps, used to produce
+    one name and silently overwrite each other.
+    """
+    four = [asset(f"P{i}") for i in range(4)]
+    five = [asset(f"P{i}") for i in range(5)]
+    # Both collapse to "Nparams", so only the hash separates them.
+    assert plan(four).suggested_name() != plan(five).suggested_name()
+
+
+def test_the_hash_survives_truncation():
+    # It is the field that identifies the plan, so cutting it would defeat the
+    # whole point of having it.
+    made = plan([asset("T_2M", model="m" * 130)])
+    name = made.suggested_name()
+    assert len(name) <= MAX_NAME_LENGTH
+    assert name.endswith(f"_{made.fingerprint()}.grib2")
+
+
+def test_the_hash_tracks_steps_and_levels_not_just_parameters():
+    one_step = plan([asset("T_2M", 0)])
+    two_steps = plan([asset("T_2M", 0), asset("T_2M", 3)])
+    assert one_step.fingerprint() != two_steps.fingerprint()

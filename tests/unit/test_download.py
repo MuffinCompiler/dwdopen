@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -55,8 +56,17 @@ class FakeHttp:
 
 
 def build(assets, failures=None):
+    """Wire a downloader to a fake server, and to assets that agree with it.
+
+    The advertised size has to match what the server serves, the way a real
+    asset's size comes from the same listing the file does. Otherwise the
+    already-downloaded check can never match and the fixture, not the code,
+    decides the result.
+    """
     payloads = {a.path: message(a.parameter.encode() + str(a.step).encode())
                 for a in assets}
+    sized = [replace(a, size=len(payloads[a.path])) for a in assets]
+    assets[:] = sized
     http = FakeHttp(payloads, failures)
     return HttpDownloader(http, max_workers=4, backoff=0.0), http, payloads
 
@@ -244,3 +254,126 @@ def test_a_finished_download_says_where_it_went(tmp_path, caplog):
         downloader.fetch(assets, tmp_path / "many", combine="none")
     assert "saved 2 files" in caplog.text
     assert "many" in caplog.text
+
+
+# --- skipping what is already downloaded ----------------------------------
+
+def test_a_correct_file_is_recognised(tmp_path):
+    from dwdopen._fileserver.naming import already_complete
+
+    good = tmp_path / "g.grib2"
+    good.write_bytes(message(b"payload"))
+    assert already_complete(good, good.stat().st_size)
+
+
+def test_a_file_truncated_to_the_right_length_is_not_trusted(tmp_path):
+    """The case a size check alone cannot catch.
+
+    A download cut short by a full disk or a killed process can land on
+    exactly the expected length; the GRIB terminator is what gives it away.
+    """
+    from dwdopen._fileserver.naming import already_complete
+
+    body = message(b"payload")
+    cut = tmp_path / "t.grib2"
+    cut.write_bytes(b"GRIB" + b"\0" * (len(body) - 4))
+    assert cut.stat().st_size == len(body)
+    assert not already_complete(cut, len(body))
+
+
+def test_a_wrong_size_or_missing_file_is_not_trusted(tmp_path):
+    from dwdopen._fileserver.naming import already_complete
+
+    small = tmp_path / "s.grib2"
+    small.write_bytes(message(b"x"))
+    assert not already_complete(small, 9999)
+    assert not already_complete(tmp_path / "absent.grib2", 10)
+
+
+def test_an_unknown_expected_size_means_fetch_it_again(tmp_path):
+    # Nothing to compare against, so guessing would be worse than refetching.
+    from dwdopen._fileserver.naming import already_complete
+
+    good = tmp_path / "g.grib2"
+    good.write_bytes(message(b"payload"))
+    assert not already_complete(good, None)
+
+
+def test_a_second_run_transfers_nothing(tmp_path):
+    assets = [asset("T_2M", 0, b""), asset("T_2M", 3, b"")]
+    downloader, http, _ = build(assets)
+
+    first = downloader.fetch(assets, tmp_path, combine="none")
+    assert first.skipped == 0
+    assert len(http.requested) == 2
+
+    second = downloader.fetch(assets, tmp_path, combine="none")
+    assert second.skipped == 2
+    assert second.bytes_downloaded == 0
+    assert len(http.requested) == 2  # no further requests at all
+
+
+def test_only_the_missing_file_comes_back(tmp_path):
+    assets = [asset("T_2M", 0, b""), asset("T_2M", 3, b"")]
+    downloader, http, _ = build(assets)
+
+    result = downloader.fetch(assets, tmp_path, combine="none")
+    result.files[0].unlink()
+    before = len(http.requested)
+
+    again = downloader.fetch(assets, tmp_path, combine="none")
+    assert again.skipped == 1
+    assert len(http.requested) == before + 1
+
+
+def test_an_explicitly_named_combined_file_is_never_skipped(tmp_path):
+    """A path the caller chose could hold anything, so it is always rewritten.
+
+    Only a generated name carries the plan fingerprint that proves the file
+    came from this exact selection.
+    """
+    from datetime import UTC, datetime
+
+    from dwdopen.nwp.request import ResolvedRequest
+
+    assets = [asset("T_2M", 0, b"")]
+    downloader, http, _ = build(assets)
+    plan = ResolvedRequest(
+        run=RUN,
+        assets=tuple(assets),
+        resolved_at=datetime.now(UTC),
+        downloader=downloader,
+    )
+
+    target = tmp_path / "mine.grib2"
+    plan.download(target)
+    before = len(http.requested)
+
+    result = plan.download(target)
+    assert result.assets_skipped == 0
+    assert len(http.requested) > before
+
+
+def test_a_generated_combined_name_is_skipped_on_a_second_run(tmp_path):
+    from datetime import UTC, datetime
+
+    from dwdopen.nwp.request import ResolvedRequest
+
+    assets = [asset("T_2M", 0, b""), asset("T_2M", 3, b"")]
+    downloader, http, _ = build(assets)
+    plan = ResolvedRequest(
+        run=RUN,
+        assets=tuple(assets),
+        resolved_at=datetime.now(UTC),
+        downloader=downloader,
+    )
+
+    first = plan.download(tmp_path)
+    assert first.assets_skipped == 0
+    before = len(http.requested)
+
+    second = plan.download(tmp_path)
+    assert second.assets_skipped == 2
+    assert second.assets_downloaded == 0
+    assert second.files == first.files
+    assert len(http.requested) == before  # nothing fetched

@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from dwdopen._fileserver.http import HttpClient
-from dwdopen._fileserver.naming import local_name, temp_name
+from dwdopen._fileserver.naming import already_complete, local_name, temp_name
 from dwdopen.exceptions import DownloadError
 from dwdopen.nwp.request import Asset, CombineMode, Fetched, human_size
 from dwdopen.nwp.selectors import LevelType
@@ -88,7 +88,12 @@ class HttpDownloader:
 
         targets = [destination / local_name(asset.keys) for asset in assets]
         sizes = self._fetch_all(assets, targets, staging)
-        return Fetched(files=tuple(targets), bytes_downloaded=sum(sizes))
+        # A zero size asset means the file was already there, thus it was skipped.
+        return Fetched(
+            files=tuple(targets),
+            bytes_downloaded=sum(sizes),
+            skipped=sum(1 for size in sizes if size == 0),
+        )
 
     def _fetch_combined(
         self, assets: Sequence[Asset], destination: Path, temp_dir: Path | None
@@ -132,7 +137,14 @@ class HttpDownloader:
             )
 
     def _fetch_one(self, asset: Asset, target: Path, staging: Path) -> int:
-        """Fetch one asset, write it beside its target, then rename it on."""
+        """Fetch one asset, write it to the specified target.
+        Returns the bytes transferred, so zero means the file was already there
+        and nothing had to be fetched.
+        """
+        if already_complete(target, asset.size):
+            logger.debug("skipping %s, already downloaded", target)
+            return 0
+
         payload = self._get_with_retries(asset)
         partial = staging / temp_name(target.name)
         partial.write_bytes(payload)
@@ -192,6 +204,8 @@ class HttpDownloader:
         """Report the finished download.
         """
         size = human_size(fetched.bytes_downloaded)
+        if fetched.skipped:
+            size += f", {fetched.skipped} already downloaded"
         if combine == "none":
             logger.info(
                 "saved %d files (%s) to %s",

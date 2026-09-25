@@ -136,6 +136,15 @@ Downloads run concurrently, are written to a temporary name and renamed into pla
 partial file is never mistaken for a finished one. Several processes may write the same
 directory at once.
 
+Already downloaded files are skipped, a second run of the same selection transfers nothing:
+A file counts as done when its size matches the catalogue and it starts with `GRIB`
+and ends with `7777`. For `combine="all"` this works when the name was generated, because
+the generated name ends in a hash of the plan and so describes that exact selection.
+
+`DownloadResult.assets_skipped` says how many were already there, which is worth
+checking in a scheduled job. Nothing is kept between runs. A partial download is discarded,
+so an interrupted job never leaves files behind.
+
 `temp_dir` must be on the same filesystem as the destination, because publishing a
 finished file is a rename and a rename cannot cross filesystems.
 

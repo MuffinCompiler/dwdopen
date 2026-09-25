@@ -6,10 +6,11 @@ from __future__ import annotations
 
 import os
 import secrets
+from pathlib import Path
 
 from dwdopen._fileserver.paths import Segment
 
-__all__ = ["local_name", "temp_name"]
+__all__ = ["already_complete", "local_name", "temp_name"]
 
 _SAFE = frozenset(
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-"
@@ -39,3 +40,30 @@ def temp_name(final: str) -> str:
 
 def _escape(token: str) -> str:
     return "".join(c if c in _SAFE else f"%{ord(c):02X}" for c in token)
+
+
+GRIB_MAGIC = b"GRIB"
+GRIB_TERMINATOR = b"7777"
+
+
+def already_complete(target: Path, expected_size: int | None) -> bool:
+    """Whether a file on disk can be trusted as a finished download.
+    Two checks: The size has to match what the catalogue listed,
+    and the file has to look like GRIB2: every message opens with "GRIB" and
+    closes with "7777".
+    """
+    if expected_size is None:
+        return False
+    try:
+        if target.stat().st_size != expected_size:
+            return False
+        if expected_size < len(GRIB_MAGIC) + len(GRIB_TERMINATOR):
+            return False
+        with target.open("rb") as handle:
+            if handle.read(4) != GRIB_MAGIC:
+                return False
+            handle.seek(-4, os.SEEK_END)
+            return handle.read(4) == GRIB_TERMINATOR
+    except OSError:
+        # Missing or unreadable.
+        return False

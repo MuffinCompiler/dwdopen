@@ -8,6 +8,8 @@ Splitting the two apart makes the imports circular.
 
 from __future__ import annotations
 
+import hashlib
+import logging
 import os
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -31,9 +33,15 @@ __all__ = [
     "ResolvedRequest",
 ]
 
+FINGERPRINT_LENGTH = 8
+"""Hex characters of the plan hash kept in a generated file name.
+"""
+
 MAX_NAME_LENGTH = 120
 """Longest generated file name, in characters.
 """
+
+logger = logging.getLogger("dwdopen")
 
 CombineMode = Literal["none", "all"]
 """How the downloaded messages are laid out on disk.
@@ -137,6 +145,10 @@ class Fetched:
 
     files: tuple[Path, ...]
     bytes_downloaded: int
+    """How many bytes were actually downloaded."""
+
+    skipped: int = 0
+    """How many assets were already on disk and needed no transfer."""
 
 
 class Downloader(Protocol):
@@ -174,6 +186,9 @@ class DownloadResult:
     run: Run
     assets_downloaded: int
     bytes_downloaded: int
+    assets_skipped: int = 0
+    """Assets that were already present, so nothing had to be fetched for them.
+    """
 
     @property
     def total_size(self) -> int:
@@ -232,44 +247,67 @@ class ResolvedRequest:
                 "this request was resolved without a downloader, so it cannot "
                 "fetch anything. Build queries from DWD().nwp"
             )
+
+        # Get the target file name.
+        target, generated = self._target(destination, combine)
+
+        # A generated name carries this plan's fingerprint, so a file existing
+        # was produced by the exact same selection. We can skip the download then.
+        if generated and target.exists():
+            logger.info("%s is already downloaded, nothing to do", target)
+            return DownloadResult(
+                files=(target,),
+                run=self.run,
+                assets_downloaded=0,
+                bytes_downloaded=0,
+                assets_skipped=len(self.assets),
+            )
+
         fetched = self.downloader.fetch(
             self.assets,
-            self._target(destination, combine),
+            target,
             combine=combine,
             temp_dir=None if temp_dir is None else Path(temp_dir),
         )
         return DownloadResult(
             files=fetched.files,
             run=self.run,
-            assets_downloaded=len(self.assets),
+            assets_downloaded=len(self.assets) - fetched.skipped,
             bytes_downloaded=fetched.bytes_downloaded,
+            assets_skipped=fetched.skipped,
         )
 
     def _target(
         self, destination: str | os.PathLike[str], combine: CombineMode
-    ) -> Path:
+    ) -> tuple[Path, bool]:
         """Returns the path where the data should go.
 
         combine="none" already expects a directory, so it is passed through. For
         combine="all" a directory is only recognized when it exists or when the
         caller wrote a trailing separator.
         If needed, a name is generated via suggested_name().
+        Returns a bool alongside whether this method generated the name.
         """
         path = Path(destination)
         if combine != "all":
-            return path
+            return path, False
         looks_like_a_directory = str(destination).endswith(("/", os.sep))
         if path.is_dir() or looks_like_a_directory:
-            return path / self.suggested_name()
-        return path
+            return path / self.suggested_name(), True
+        return path, False
+
+    def fingerprint(self) -> str:
+        """A short hash of the plan by hashing the sorted assets.
+        """
+        material = "\n".join(asset.path for asset in self.assets)
+        return hashlib.sha256(material.encode()).hexdigest()[:FINGERPRINT_LENGTH]
 
     def suggested_name(self, suffix: str = ".grib2") -> str:
         """A file name describing the resolved request, human readable.
-        Contains model, the run, and step range::
+        Contains model, the run, step range, and a hash of the plan::
 
-            icon-eu_2026-09-24T0600_T_2M+PMSL_0h-24h.grib2
-            icon_2026-09-24T0600_21params_0h-120h.grib2
-            icon-eu_2026-09-24T0600_T_850hPa_0h.grib2
+            icon-eu_2026-09-24T0600_T_2M+PMSL_0h-24h_a3f91c2e.grib2
+            icon_2026-09-24T0000_P_120lv_0h-180h_09c1f0c5.grib2
 
         More than three parameters are counted rather than listed.
         """
@@ -279,19 +317,20 @@ class ResolvedRequest:
         run = f"{self.run.reference_time:%Y-%m-%dT%H%M}"
         tail = [self._describe_levels(), self._describe_steps()]
         fixed = [self.assets[0].model, run, *(part for part in tail if part)]
+        ending = f"_{self.fingerprint()}{suffix}"
 
-        name = self._assemble(fixed, self._describe_parameters(), suffix)
+        name = self._assemble(fixed, self._describe_parameters(), ending)
         if len(name) <= MAX_NAME_LENGTH:
             return name
 
         # Count parameters instead of listing them if there are too many,
         count = f"{len({a.parameter for a in self.assets})}params"
-        name = self._assemble(fixed, count, suffix)
+        name = self._assemble(fixed, count, ending)
         if len(name) <= MAX_NAME_LENGTH:
             return name
 
         # Backup: trim if too long.
-        return name[: MAX_NAME_LENGTH - len(suffix)].rstrip("_+.") + suffix
+        return name[: MAX_NAME_LENGTH - len(ending)].rstrip("_+.") + ending
 
     @staticmethod
     def _assemble(fixed: list[str], parameters: str, suffix: str) -> str:
