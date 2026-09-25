@@ -119,3 +119,57 @@ def test_hhl_is_the_invariant_field_that_does_need_a_level_type(tmp_path):
     with DWD() as dwd:
         info = dwd.nwp.model("icon-d2").parameter("HHL")
         assert [t.alias for t in info.level_types] == ["model"]
+
+
+def test_ensemble_members_are_selected_and_land_in_the_path(tmp_path):
+    with DWD() as dwd:
+        plan = dwd.nwp.model("icon-d2-eps").select(
+            parameters="T_2M", members=[1, 2, 3], steps=["0h", "1h"]
+        ).resolve()
+
+        assert sorted({a.member for a in plan.assets}) == [1, 2, 3]
+        # Padded on the server, even though the selector took plain numbers.
+        assert all("/e/0" in a.path for a in plan.assets)
+
+        result = plan.download(tmp_path / "eps.grib2")
+
+    assert grib_messages(result.files[0]) == 6
+
+
+def test_levels_and_members_multiply(tmp_path):
+    # Ensembles publish a reduced level set, so read what is really there.
+    with DWD() as dwd:
+        eps = dwd.nwp.model("icon-eu-eps")
+        levels = eps.levels("T", "model")
+        plan = eps.select(
+            parameters="T", level_type="model", levels=[int(v) for v in levels[:2]],
+            members=[1, 2], steps="0h",
+        ).resolve()
+
+    assert len(plan.assets) == 4
+    assert sorted({a.member for a in plan.assets}) == [1, 2]
+    assert len({a.level for a in plan.assets}) == 2
+
+
+def test_combine_member_writes_one_file_per_member(tmp_path):
+    with DWD() as dwd:
+        query = dwd.nwp.model("icon-d2-eps").select(
+            parameters="T_2M", members=[1, 2], steps="0h"
+        )
+        result = query.download(tmp_path / "bymember", combine="member")
+
+    assert len(result.files) == 2
+    # The member is in the name, not only in the hash, or the files would be
+    # impossible to tell apart.
+    assert sorted(p.name.split("_T_2M_")[1][:3] for p in result.files) == ["e01", "e02"]
+    for path in result.files:
+        assert grib_messages(path) == 1
+
+
+def test_combine_member_needs_an_ensemble(tmp_path):
+    from dwdopen.exceptions import InvalidSelectorError
+
+    with DWD() as dwd:
+        query = dwd.nwp.model("icon-eu").select(parameters="T_2M", steps="0h")
+        with pytest.raises(InvalidSelectorError, match="ensemble"):
+            query.download(tmp_path / "out", combine="member")

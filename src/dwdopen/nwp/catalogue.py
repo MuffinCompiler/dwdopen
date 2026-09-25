@@ -83,11 +83,30 @@ class Catalogue(Protocol):
         *,
         level_type: LevelType | None = None,
         levels: Sequence[Decimal] | None = None,
+        members: Sequence[int] | None = None,
     ) -> list[Asset]:
         """Every asset of one parameter in one run.
         ``levels`` selects which levels to fetch, in server units, and is None
         for a 2-D field.
+        ``members`` selects ensemble members and is None for a deterministic
+        model.
+
         Raises RunExpiredError if the run is no longer on the server.
+        """
+        ...
+
+    def members(
+        self,
+        model: str,
+        parameter: str,
+        run: Run,
+        *,
+        level_type: LevelType | None = None,
+        level: Decimal | None = None,
+    ) -> list[int]:
+        """Ensemble members available for one parameter in one run, sorted.
+        Empty for a deterministic model, which has no e/ segment at all. A 3-D
+        field needs the level, because the run sits below lvt1/lv1.
         """
         ...
 

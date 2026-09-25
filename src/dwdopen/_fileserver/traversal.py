@@ -26,6 +26,11 @@ from dwdopen.nwp.selectors import LevelType
 
 __all__ = ["OpenDataCatalogue"]
 
+
+def model_of(where: tuple[Segment, ...]) -> str:
+    """The model name out of a path prefix."""
+    return dict(where)["m"]
+
 _T = TypeVar("_T")
 _R = TypeVar("_R")
 
@@ -43,6 +48,9 @@ LEVEL_TYPE_KEY = "lvt1"
 
 LEVEL_KEY = "lv1"
 """The level value, in the unit that level type uses."""
+
+MEMBER_KEY = "e"
+"""The ensemble member. Zero padded to two digits."""
 
 STEP_KEY = "s"
 """The key holding the step files. Always the last key of a path.
@@ -154,24 +162,37 @@ class OpenDataCatalogue:
         *,
         level_type: LevelType | None = None,
         levels: Sequence[Decimal] | None = None,
+        members: Sequence[int] | None = None,
     ) -> list[Asset]:
-        """Every asset of one parameter in one run in one model."""
-        base = (("m", model), ("p", parameter))
-        if level_type is None or levels is None:
-            return self._assets_below(base, parameter, run, None, None)
+        """Every asset of one parameter in one run in one model.
+        """
+        chosen_levels: list[Decimal | None] = (
+            [None] if level_type is None or levels is None else list(levels)
+        )
+        chosen_members: list[int | None] = (
+            list(members) if members else [None]
+        )
 
-        prefixes = [
-            (self._prefix(model, parameter, level_type, level), level)
-            for level in levels
+        # Look for assets for all levels and member combinations.
+        # Do this in parallel as it does some http requests to find the
+        # available assets under each level and member.
+        jobs = [
+            (level, member)
+            for level in chosen_levels
+            for member in chosen_members
         ]
 
         found: list[Asset] = []
-        # Collect assets for each level.
         for batch in self._in_parallel(
-            lambda item: self._assets_below(
-                item[0], parameter, run, level_type, item[1]
+            lambda job: self._assets_below(
+                self._prefix(model, parameter, level_type, job[0]),
+                parameter,
+                run,
+                level_type,
+                job[0],
+                job[1],
             ),
-            prefixes,
+            jobs,
         ):
             found.extend(batch)
         return found
@@ -183,13 +204,26 @@ class OpenDataCatalogue:
         run: Run,
         level_type: LevelType | None,
         level: Decimal | None,
+        member: int | None = None,
     ) -> list[Asset]:
         """The step files under one fully-qualified prefix."""
         token = self._run_token(where, parameter, run)
-
-        # Straight for the step files. A deterministic model has them directly
-        # below the run; an ensemble hides them under e/<member>/ and this 404s.
         below_run = (*where, (RUN_KEY, token))
+
+        if member is not None:
+            # Get available catalogue members as [int]
+            tokens = self._member_tokens(model_of(where), parameter, run,
+                                         level_type, level)
+            if member not in tokens:
+                raise MissingAssetError(
+                    f"{parameter} has no member {member} in run {run}. "
+                    f"Available: {min(tokens)}..{max(tokens)}" if tokens
+                    else f"{parameter} has no ensemble members in run {run}"
+                )
+            # Add member to the access segments.
+            below_run = (*below_run, (MEMBER_KEY, tokens[member]))
+
+        # Get the listing of all available steps.
         try:
             listing = self._http.get_listing(build_path(*below_run, key=STEP_KEY))
         except CatalogueUnavailableError:
@@ -197,6 +231,7 @@ class OpenDataCatalogue:
             raise
 
         assets = []
+        # Parse entries. Each entry is one GRIB file, thus one asset.
         for entry in parse_listing(listing):
             if entry.is_dir:
                 continue
@@ -211,9 +246,51 @@ class OpenDataCatalogue:
                     modified=entry.modified,
                     level_type=level_type,
                     level=level,
+                    member=member,
                 )
             )
         return assets
+
+    def members(
+        self,
+        model: str,
+        parameter: str,
+        run: Run,
+        *,
+        level_type: LevelType | None = None,
+        level: Decimal | None = None,
+    ) -> list[int]:
+        """Ensemble members available for one parameter in one run, sorted.
+        A 3-D field needs the level too, since the run sits below lvt1/lv1.
+        Empty for a deterministic model.
+        """
+        return sorted(
+            self._member_tokens(model, parameter, run, level_type, level)
+        )
+
+    def _member_tokens(
+        self,
+        model: str,
+        parameter: str,
+        run: Run,
+        level_type: LevelType | None,
+        level: Decimal | None,
+    ) -> dict[int, str]:
+        """Returns a map of every member number to the token (string) the server
+        uses. On the server, members are padded to two digits currently.
+        (Contrary to levels that are not padded at all.)
+
+        An empty mapping means the parameter has no e/ segment, so the model is
+        deterministic.
+        """
+        where = self._prefix(model, parameter, level_type, level)
+        token = self._run_token(where, parameter, run)
+        below_run = (*where, (RUN_KEY, token))
+        try:
+            entries = self._subdirectories(*below_run, key=MEMBER_KEY)
+        except CatalogueUnavailableError:
+            return {}
+        return {int(entry.name): entry.name for entry in entries}
 
     def _level_tokens(
         self, model: str, parameter: str, level_type: LevelType
@@ -267,9 +344,8 @@ class OpenDataCatalogue:
             return
         raise NotImplementedError(
             f"{build_path(*where)} contains {'/, '.join(found)}/, not "
-            f"{expected}/. Wavelengths (wvl1, ICON-ART) and ensemble members "
-            f"(e) are not supported yet. For a level type pass level_type= "
-            f"and levels= to select()"
+            f"{expected}/. ICON-ART wavelengths (wvl1) are currently "
+            f"unsupported"
         )
 
     def _run_token(self, where: tuple[Segment, ...], parameter: str, run: Run) -> str:

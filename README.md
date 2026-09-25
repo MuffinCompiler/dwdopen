@@ -91,6 +91,23 @@ Note that DWD publishes data incrementally on the server, so a run might just be
 available. If you use `Between`, you might just get what's already available, not the full
 data.
 
+### Ensemble members
+
+The `-eps` models publish each member separately. Members are plain integers; how many
+there are differs per model (40 for ICON-EPS and ICON-EU-EPS, 20 for ICON-D2-EPS, 10 for
+ICON-ART-EPS):
+
+```python
+eps.select(parameters="T_2M", members=[1, 2, 5])
+eps.select(parameters="T_2M", members=Between(1, 10))
+eps.select(parameters="T_2M")                       # every member
+```
+
+Leaving `members` out takes all of them, the same as levels and steps.
+Ensembles publish a reduced level set: `icon-eu-eps` `T` has 3 pressure levels
+and 3 model levels, against 20 and 74 for deterministic ICON-EU. Check the output of
+`model.levels()` to see what is actually there.
+
 ### Vertical levels
 
 ```python
@@ -114,6 +131,7 @@ icon_d2.select(parameters="HHL", level_type="model", levels="all")
 
 ```python
 query.download("forecast.grib2")                    # one combined file
+query.download("members/", combine="member")        # one file per ensemble member
 query.download("forecast/", combine="none")         # one file per message
 query.download("f.grib2", temp_dir="/scratch")      # partial downloads before combining elsewhere
 ```

@@ -12,13 +12,13 @@ import hashlib
 import logging
 import os
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Literal, Protocol
 
-from dwdopen.exceptions import DownloadError
+from dwdopen.exceptions import DownloadError, InvalidSelectorError
 from dwdopen.nwp.durations import format_duration
 from dwdopen.nwp.run import Run
 from dwdopen.nwp.selectors import LevelType
@@ -43,9 +43,9 @@ MAX_NAME_LENGTH = 120
 
 logger = logging.getLogger("dwdopen")
 
-CombineMode = Literal["none", "all"]
+CombineMode = Literal["none", "all", "member"]
 """How the downloaded messages are laid out on disk.
-TODO add member and per parameter
+TODO per parameter
 """
 
 
@@ -82,6 +82,10 @@ class Asset:
     (0.005, 0.18), might become problematic with floating point representations.
     """
 
+    member: int | None = None
+    """Ensemble member, None for a deterministic model.
+    """
+
     @property
     def parameter(self) -> str:
         return dict(self.keys)["p"]
@@ -113,7 +117,7 @@ class Asset:
             parts.append(human_size(self.size))
         return f"{type(self).__name__}({', '.join(parts)})"
 
-    def sort_key(self) -> tuple[timedelta, str, int, Decimal]:
+    def sort_key(self) -> tuple[timedelta, str, int, Decimal, int]:
         """Returns a key to sort the assets by.
         Time first, parameter second, then the vertical coordinate, so that
         every field of one forecast step sits together and the steps ascend.
@@ -122,13 +126,13 @@ class Asset:
         CDO (Climate Data Operators) refuses GRIB files whose messages are not in
         increasing time order. Sorting parameter-major would lead to a GRIB file that
         CDO rejects. So we sort here time-major.
-        TODO: sort also ens members...
         """
         return (
             self.step,
             self.parameter,
             -1 if self.level_type is None else self.level_type.code,
             Decimal(0) if self.level is None else self.level,
+            -1 if self.member is None else self.member,
         )
 
 
@@ -248,6 +252,9 @@ class ResolvedRequest:
                 "fetch anything. Build queries from DWD().nwp"
             )
 
+        if combine == "member":
+            return self._download_per_member(destination, temp_dir)
+
         # Get the target file name.
         target, generated = self._target(destination, combine)
 
@@ -275,6 +282,50 @@ class ResolvedRequest:
             assets_downloaded=len(self.assets) - fetched.skipped,
             bytes_downloaded=fetched.bytes_downloaded,
             assets_skipped=fetched.skipped,
+        )
+
+    def _download_per_member(
+        self,
+        destination: str | os.PathLike[str],
+        temp_dir: str | os.PathLike[str] | None,
+    ) -> DownloadResult:
+        """Download one combined file per ensemble member.
+        Each member is just a smaller plan over the same run, so it is split
+        into one and downloaded as combine="all". Everything then comes for
+        free: the generated name, its fingerprint over that member's own
+        assets...
+        """
+        groups: dict[int, list[Asset]] = {}
+        for asset in self.assets:
+            if asset.member is None:
+                raise InvalidSelectorError(
+                    'combine="member" needs an ensemble model, but this plan '
+                    "has no members. Use combine=\"all\" or \"none\""
+                )
+            groups.setdefault(asset.member, []).append(asset)
+
+        # A directory, because every member needs its own name.
+        folder = Path(destination)
+        folder.mkdir(parents=True, exist_ok=True)
+
+        # Iterate over every member and download() each one.
+        files: list[Path] = []
+        downloaded = skipped = transferred = 0
+        for member in sorted(groups):
+            one = replace(self, assets=tuple(groups[member]))
+            result = one.download(folder, combine="all", temp_dir=temp_dir)
+            files.extend(result.files)
+            downloaded += result.assets_downloaded
+            skipped += result.assets_skipped
+            transferred += result.bytes_downloaded
+
+        logger.info("wrote %d member files to %s", len(files), folder)
+        return DownloadResult(
+            files=tuple(files),
+            run=self.run,
+            assets_downloaded=downloaded,
+            bytes_downloaded=transferred,
+            assets_skipped=skipped,
         )
 
     def _target(
@@ -315,7 +366,11 @@ class ResolvedRequest:
             raise DownloadError("cannot name an empty plan")
 
         run = f"{self.run.reference_time:%Y-%m-%dT%H%M}"
-        tail = [self._describe_levels(), self._describe_steps()]
+        tail = [
+            self._describe_levels(),
+            self._describe_members(),
+            self._describe_steps(),
+        ]
         fixed = [self.assets[0].model, run, *(part for part in tail if part)]
         ending = f"_{self.fingerprint()}{suffix}"
 
@@ -359,6 +414,17 @@ class ResolvedRequest:
             return f"{value}{unit}" if unit != "index" else f"lv{value}"
         return f"{len(levels)}lv"
 
+    def _describe_members(self) -> str:
+        """The ensemble member, empty for a deterministic plan.
+        String representation for this plans' members.
+        """
+        members = {a.member for a in self.assets if a.member is not None}
+        if not members:
+            return ""
+        if len(members) == 1:
+            return f"e{members.pop():02d}"
+        return f"{len(members)}mem"
+
     def _describe_steps(self) -> str:
         steps = sorted(asset.step for asset in self.assets)
         first, last = format_duration(steps[0]), format_duration(steps[-1])
@@ -383,6 +449,12 @@ class ResolvedRequest:
             parts.append(", ".join(names))
         else:
             parts.append(f"{len(names)} parameters")
+
+        members = {a.member for a in self.assets if a.member is not None}
+        if len(members) == 1:
+            parts.append(f"member {members.copy().pop()}")
+        elif members:
+            parts.append(f"{len(members)} members")
 
         kinds = {a.level_type for a in self.assets if a.level_type is not None}
         if kinds:

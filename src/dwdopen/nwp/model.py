@@ -192,15 +192,12 @@ class Model:
         level type.
         ``levels`` is in the readable unit: hPa for pressure, the bare index for
         model levels, metres for soil.
-
-        TODO ensemble members NYI
         """
-        unsupported = {"members": members, **selectors}
+        unsupported = dict(selectors)
         given = sorted(name for name, value in unsupported.items() if value is not None)
         if given:
             raise NotImplementedError(
-                f"{', '.join(given)}: not supported yet. Ensemble members and "
-                f"ICON-ART wavelengths TODO"
+                f"{', '.join(given)}: not supported yet. ICON-ART wavelengths TODO"
             )
 
         # Validate steps before accessing the network.
@@ -220,6 +217,7 @@ class Model:
             steps=steps,
             level_type=chosen_type,
             levels=levels,
+            members=members,
             downloader=self._downloader,
         )
 

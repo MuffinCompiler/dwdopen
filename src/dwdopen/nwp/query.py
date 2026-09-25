@@ -31,6 +31,7 @@ from dwdopen.nwp.selectors import (
     LevelScalar,
     LevelSelector,
     LevelType,
+    MemberSelector,
     StepScalar,
     StepSelector,
 )
@@ -68,6 +69,7 @@ class Query:
         steps: StepSelector | None = None,
         level_type: LevelType | None = None,
         levels: LevelSelector | None = None,
+        members: MemberSelector | None = None,
         downloader: Downloader | None = None,
     ) -> None:
         self._catalogue = catalogue
@@ -76,6 +78,7 @@ class Query:
         self._steps = steps
         self._level_type = level_type
         self._levels = levels
+        self._members = members
         self._downloader = downloader
 
     def __repr__(self) -> str:
@@ -153,6 +156,7 @@ class Query:
                 resolved_run,
                 level_type=self._level_type,
                 levels=self._wanted_levels(parameter),
+                members=self._wanted_members(parameter, resolved_run),
             )
             wanted, absent = _select_steps(available, self._steps)
             assets.extend(wanted)
@@ -186,6 +190,23 @@ class Query:
         available = self._catalogue.levels(self._model, parameter, self._level_type)
         return _select_levels(available, self._levels, self._level_type)
 
+    def _wanted_members(self, parameter: str, run: Run) -> list[int] | None:
+        """Which ensemble members to fetch, None for a deterministic model.
+        Needs the run, because members are below it.
+        """
+        # Any level will do: every level of a parameter shares its members.
+        levels = self._wanted_levels(parameter)
+        available = self._catalogue.members(
+            self._model,
+            parameter,
+            run,
+            level_type=self._level_type,
+            level=levels[0] if levels else None,
+        )
+        if not available:
+            return None
+        return _select_members(available, self._members)
+
     def download(
         self,
         destination: str | os.PathLike[str],
@@ -202,6 +223,42 @@ class Query:
         return self.resolve(run=run, require=require).download(
             destination, combine=combine, temp_dir=temp_dir
         )
+
+
+def _select_members(
+    available: Sequence[int], selector: MemberSelector | None
+) -> list[int]:
+    """Pick the ensemble members a selector asks for.
+    Members are plain integers with no unit to convert.
+    """
+    if selector is None or selector == "all":
+        return list(available)
+
+    offered = set(available)
+
+    if isinstance(selector, Between):
+        low = selector.start
+        high = selector.stop
+        return [
+            member
+            for member in available
+            if (low is None or member >= low) and (high is None or member <= high)
+        ]
+
+    if isinstance(selector, Every):
+        wanted = list(range(selector.start, selector.stop + 1, selector.every))
+    elif isinstance(selector, int):
+        wanted = [selector]
+    else:
+        wanted = list(selector)
+
+    unknown = [member for member in wanted if member not in offered]
+    if unknown:
+        raise InvalidSelectorError(
+            f"no ensemble member {', '.join(str(m) for m in unknown)}. "
+            f"This model has members {min(available)}..{max(available)}"
+        )
+    return wanted
 
 
 def _select_levels(
