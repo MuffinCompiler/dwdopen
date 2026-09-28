@@ -73,7 +73,7 @@ def test_between_is_inclusive_and_in_user_units():
     assert chosen == [Decimal(70000), Decimal(85000), Decimal(100000)]
 
 
-def test_every_expands_a_cadence():
+def test_every_expands_a_regular_series():
     chosen = _select_levels(MODEL_LEVELS, Every(60, 64, 2), MODEL)
     assert chosen == [Decimal(60), Decimal(62), Decimal(64)]
 

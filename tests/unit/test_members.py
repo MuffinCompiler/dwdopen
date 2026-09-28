@@ -39,7 +39,7 @@ def test_between_is_inclusive():
     assert _select_members(TWENTY, Between(3, 6)) == [3, 4, 5, 6]
 
 
-def test_every_expands_a_cadence():
+def test_every_expands_a_regular_series():
     assert _select_members(TWENTY, Every(1, 9, 4)) == [1, 5, 9]
 
 
@@ -92,7 +92,7 @@ def test_the_padded_token_is_kept_not_rebuilt():
     """Formatting a number back would have to know that members pad and
     levels do not."""
     cat, _ = catalogue()
-    tokens = cat._member_tokens("icon-d2-eps", "T_2M", RUN, None, None)
+    tokens = cat._member_tokens_by_value("icon-d2-eps", "T_2M", RUN, None, None)
     assert tokens[1] == "01"
     assert tokens[10] == "10"
 

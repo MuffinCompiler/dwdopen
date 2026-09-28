@@ -6,10 +6,9 @@ TODO add caching
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
-from typing import TypeVar
 
 from dwdopen._fileserver.http import HttpClient
 from dwdopen._fileserver.listing import ListingEntry, parse_listing
@@ -27,21 +26,17 @@ from dwdopen.nwp.selectors import LevelType
 __all__ = ["OpenDataCatalogue"]
 
 
-def model_of(where: tuple[Segment, ...]) -> str:
-    """The model name out of a path prefix."""
-    return dict(where)["m"]
-
-_T = TypeVar("_T")
-_R = TypeVar("_R")
-
 GRIB_SUFFIX = ".grib2"
 
-RUN_KEY = "r"
-"""The key that sits directly below .../p/<NAME>/ for a plain 2-D parameter.
+# Every key DWD uses in a v1 path, in the order they appear:
+#   m/<model>/p/<param>[/wvl1/<nm>][/lvt1/<type>/lv1/<value>]
+#   /r/<run>[/e/<member>]/s/<step>.grib2
 
-Anything else there (lvt1 for a 3-D field, wvl1 for ICON-ART) means the run
-listing is deeper down the path.
-"""
+MODEL_KEY = "m"
+"""The forecast model, for example icon-eu."""
+
+PARAMETER_KEY = "p"
+"""The parameter shortname, for example T_2M."""
 
 LEVEL_TYPE_KEY = "lvt1"
 """GRIB typeOfFirstFixedSurface. Absent for a 2-D field."""
@@ -49,14 +44,19 @@ LEVEL_TYPE_KEY = "lvt1"
 LEVEL_KEY = "lv1"
 """The level value, in the unit that level type uses."""
 
+RUN_KEY = "r"
+"""The key that sits directly below .../p/<NAME>/ for a plain 2-D parameter.
+Anything else there (lvt1 for a 3-D field, wvl1 for ICON-ART) means the run
+listing is deeper down the path.
+"""
+
 MEMBER_KEY = "e"
 """The ensemble member. Zero padded to two digits."""
 
 STEP_KEY = "s"
 """The key holding the step files. Always the last key of a path.
-
-For a deterministic model it sits directly below the run. An ensemble pushes it
-one level deeper, below e/<member>/, so the run of an ensemble member reads
+This always sits on the "deepest" level. So within the s/ subdirectory,
+there will be the grib2 files to download.
 .../r/<run>/e/<member>/s/<step>.grib2.
 """
 
@@ -73,14 +73,16 @@ class OpenDataCatalogue:
 
     def models(self) -> list[str]:
         """Model names currently visible, sorted."""
-        model_entries = self._subdirectories(key="m")
+        model_entries = self._subdirectories(key=MODEL_KEY)
         model_names = [entry.name for entry in model_entries]
         return sorted(model_names)
 
     def parameters(self, model: str) -> list[str]:
         """Parameter names visible for the model, sorted.
         """
-        parameter_entries = self._subdirectories(("m", model), key="p")
+        parameter_entries = self._subdirectories(
+            (MODEL_KEY, model), key=PARAMETER_KEY
+        )
         parameter_names = [entry.name for entry in parameter_entries]
         return sorted(parameter_names)
 
@@ -88,41 +90,50 @@ class OpenDataCatalogue:
         self,
         model: str,
         *,
-        probe: str | None = None,
+        parameter: str | None = None,
         level_type: LevelType | None = None,
         level: Decimal | None = None,
     ) -> list[Run]:
         """Runs visible for the model, oldest first.
-        ``probe`` names the parameter (and level if 3-D) to look under, because the DWD layout has
-        the runs below the parameters, so we need to choose a parameter to check
-        for available runs (for that parameter!).
 
-        Note that a run can appear here that is still being published, and not yet
-        completed.
+        DWD keeps the runs below the parameter, and below lvt1/lv1 for a 3-D
+        field, so there is no run listing at model level. Answering the
+        question therefore means picking one parameter, and one of its levels
+        if it has any. Every parameter of a model normally carries the same
+        runs, but one has to be named.
+
+        A run can appear here while it is still being published.
+        TODO think about just picking any available param name and level?
         """
-        if probe is None:
+        if parameter is None:
             raise NotImplementedError(
-                "picking a probe parameter automatically is not implemented yet. "
-                "pass probe=... explicitly"
+                "picking a parameter automatically is not implemented yet. "
+                "pass parameter=... explicitly"
             )
         run_entries = self._run_entries(
-            self._prefix(model, probe, level_type, level)
+            self._above_run(model, parameter, level_type, level)
         )
         runs = [Run.coerce(entry.name) for entry in run_entries]
         return sorted(runs)
 
-    def _prefix(
+    def _above_run(
         self,
         model: str,
         parameter: str,
         level_type: LevelType | None,
         level: Decimal | None,
     ) -> tuple[Segment, ...]:
-        """The path down to, but not including, the run key."""
-        where: tuple[Segment, ...] = (("m", model), ("p", parameter))
+        """The path segments that sit above the run: m, p and the level.
+        TODO: ICON-ART also puts wvl1/<nm> here, between p and lvt1. Once
+        wavelengths are supported this is where that segment belongs.
+        """
+        where: tuple[Segment, ...] = (
+            (MODEL_KEY, model),
+            (PARAMETER_KEY, parameter),
+        )
         if level_type is None or level is None:
             return where
-        tokens = self._level_tokens(model, parameter, level_type)
+        tokens = self._level_tokens_by_value(model, parameter, level_type)
         token = tokens.get(level)
         if token is None:
             raise MissingAssetError(
@@ -137,12 +148,18 @@ class OpenDataCatalogue:
 
     def level_types(self, model: str, parameter: str) -> list[LevelType]:
         """Vertical coordinate types this parameter is published on, sorted."""
-        below = [e.name for e in self._subdirectories(("m", model), ("p", parameter))]
-        if LEVEL_TYPE_KEY not in below:
-            return []
+        level_type_key_dir = [
+            entry.name
+            for entry in self._subdirectories(
+                (MODEL_KEY, model), (PARAMETER_KEY, parameter)
+            )
+        ]
+        if LEVEL_TYPE_KEY not in level_type_key_dir:
+            return [] # No level types, probably 2-D.
         entries = self._subdirectories(
-            ("m", model), ("p", parameter), key=LEVEL_TYPE_KEY
+            (MODEL_KEY, model), (PARAMETER_KEY, parameter), key=LEVEL_TYPE_KEY
         )
+        # Convert to the LevelType type, given the code.
         return sorted(
             (LevelType.of(int(entry.name)) for entry in entries),
             key=lambda lt: lt.code,
@@ -152,7 +169,7 @@ class OpenDataCatalogue:
         self, model: str, parameter: str, level_type: LevelType
     ) -> list[Decimal]:
         """Level values available, in the unit DWD writes them in."""
-        return sorted(self._level_tokens(model, parameter, level_type))
+        return sorted(self._level_tokens_by_value(model, parameter, level_type))
 
     def assets(
         self,
@@ -165,55 +182,59 @@ class OpenDataCatalogue:
         members: Sequence[int] | None = None,
     ) -> list[Asset]:
         """Every asset of one parameter in one run in one model.
+
+        TODO: ICON-ART wavelengths (wvl1) are not selectable yet, so a
+        parameter that has them cannot be reached from here.
         """
         chosen_levels: list[Decimal | None] = (
             [None] if level_type is None or levels is None else list(levels)
         )
-        chosen_members: list[int | None] = (
-            list(members) if members else [None]
-        )
+        chosen_members: list[int | None] = list(members) if members else [None]
 
-        # Look for assets for all levels and member combinations.
-        # Do this in parallel as it does some http requests to find the
-        # available assets under each level and member.
-        jobs = [
+        # Combinations for levels and members.
+        combinations = [
             (level, member)
             for level in chosen_levels
             for member in chosen_members
         ]
 
+        def fetch(combination: tuple[Decimal | None, int | None]) -> list[Asset]:
+            level, member = combination
+            return self._assets_for(model, parameter, run, level_type, level, member)
+
+        # Fetch assets in parallel for each of the combination.
+        if len(combinations) == 1:
+            batches = [fetch(combinations[0])]
+        else:
+            workers = min(self._max_workers, len(combinations))
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                batches = list(pool.map(fetch, combinations))
+
         found: list[Asset] = []
-        for batch in self._in_parallel(
-            lambda job: self._assets_below(
-                self._prefix(model, parameter, level_type, job[0]),
-                parameter,
-                run,
-                level_type,
-                job[0],
-                job[1],
-            ),
-            jobs,
-        ):
+        for batch in batches:
             found.extend(batch)
         return found
 
-    def _assets_below(
+    def _assets_for(
         self,
-        where: tuple[Segment, ...],
+        model: str,
         parameter: str,
         run: Run,
-        level_type: LevelType | None,
-        level: Decimal | None,
+        level_type: LevelType | None = None,
+        level: Decimal | None = None,
         member: int | None = None,
     ) -> list[Asset]:
-        """The step files under one fully-qualified prefix."""
-        token = self._run_token(where, parameter, run)
-        below_run = (*where, (RUN_KEY, token))
+        """The available forecast step files for one exact combination.
+        """
+        where = self._above_run(model, parameter, level_type, level)
+        run_token = self._run_token(where, parameter, run)
+        below_run = (*where, (RUN_KEY, run_token))
 
+        # Member for ensemble forecasts
         if member is not None:
-            # Get available catalogue members as [int]
-            tokens = self._member_tokens(model_of(where), parameter, run,
-                                         level_type, level)
+            tokens = self._member_tokens_by_value(
+                model, parameter, run, level_type, level
+            )
             if member not in tokens:
                 raise MissingAssetError(
                     f"{parameter} has no member {member} in run {run}. "
@@ -265,10 +286,10 @@ class OpenDataCatalogue:
         Empty for a deterministic model.
         """
         return sorted(
-            self._member_tokens(model, parameter, run, level_type, level)
+            self._member_tokens_by_value(model, parameter, run, level_type, level)
         )
 
-    def _member_tokens(
+    def _member_tokens_by_value(
         self,
         model: str,
         parameter: str,
@@ -283,37 +304,28 @@ class OpenDataCatalogue:
         An empty mapping means the parameter has no e/ segment, so the model is
         deterministic.
         """
-        where = self._prefix(model, parameter, level_type, level)
-        token = self._run_token(where, parameter, run)
-        below_run = (*where, (RUN_KEY, token))
+        where = self._above_run(model, parameter, level_type, level)
+        run_token = self._run_token(where, parameter, run)
+        below_run = (*where, (RUN_KEY, run_token))
         try:
             entries = self._subdirectories(*below_run, key=MEMBER_KEY)
         except CatalogueUnavailableError:
             return {}
         return {int(entry.name): entry.name for entry in entries}
 
-    def _level_tokens(
+    def _level_tokens_by_value(
         self, model: str, parameter: str, level_type: LevelType
     ) -> dict[Decimal, str]:
-        """Map each available level onto the exact token the server uses.
+        """Every available level, mapped to the token the server writes for it.
+        Decimal type to avoid floating point issues with soil value heights.
         """
         entries = self._subdirectories(
-            ("m", model),
-            ("p", parameter),
+            (MODEL_KEY, model),
+            (PARAMETER_KEY, parameter),
             (LEVEL_TYPE_KEY, str(level_type.code)),
             key=LEVEL_KEY,
         )
         return {Decimal(entry.name): entry.name for entry in entries}
-
-    def _in_parallel(
-        self, work: Callable[[_T], _R], items: Sequence[_T]
-    ) -> list[_R]:
-        """Run one listing job per item, bounded, preserving input order."""
-        if len(items) <= 1:
-            return [work(item) for item in items]
-        workers = min(self._max_workers, len(items))
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            return list(pool.map(work, items))
 
     def _run_entries(self, where: tuple[Segment, ...]) -> list[ListingEntry]:
         """List the run directories of one parameter.

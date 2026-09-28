@@ -5,7 +5,7 @@ with DWD() as dwd:
     print(dwd.nwp.models())
     icon_eu = dwd.nwp.model("icon-eu")
     print(icon_eu.parameters())
-    latest_run = icon_eu.latest_run(probe="T_2M")
+    latest_run = icon_eu.latest_run(parameter="T_2M")
     print(latest_run)
 
     query = icon_eu.select(parameters=["U"], level_type="pressure")

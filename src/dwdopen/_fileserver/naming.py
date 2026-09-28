@@ -12,7 +12,7 @@ from dwdopen._fileserver.paths import Segment
 
 __all__ = ["already_complete", "local_name", "temp_name"]
 
-_SAFE = frozenset(
+_SAFE = set(
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-"
 )
 """Allowed characters for file names. Characters that both Linux and Windows
@@ -39,6 +39,7 @@ def temp_name(final: str) -> str:
 
 
 def _escape(token: str) -> str:
+    """Escape characters not in _SAFE list."""
     return "".join(c if c in _SAFE else f"%{ord(c):02X}" for c in token)
 
 

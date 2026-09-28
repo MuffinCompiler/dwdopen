@@ -1,4 +1,7 @@
-"""The seam between the semantic layer and whatever provides availability."""
+"""The interface for the catalogue.
+
+Contains the methods that provide availability information.
+"""
 
 from __future__ import annotations
 
@@ -20,7 +23,7 @@ class Catalogue(Protocol):
     layer: nothing above it may know how availability is obtained.
     Several implementations can implement this knowledge.
     A lazy HTTP traversal is implemented in _fileserver/traversal.py.
-    Later on, a bulk index could be built from the content,log.bz2. Or "fake"
+    Later on, a bulk index could be built from the content.log.bz2. Or "fake"
     implementations can be used for testing,
     """
 
@@ -39,19 +42,19 @@ class Catalogue(Protocol):
         self,
         model: str,
         *,
-        probe: str | None = None,
+        parameter: str | None = None,
         level_type: LevelType | None = None,
         level: Decimal | None = None,
     ) -> list[Run]:
         """Runs visible for the model, oldest first.
 
-        ``probe`` names the parameter used to answer this. It exists because
-        the v1 layout puts /r/<run>/ below the parameter, and below lvt1/lv1
-        for 3-D fields. There is therefore no run listing at model level. When
-        probe is None the implementation picks a cheap single-level parameter.
-        Thus, a run can appear here while it is still being published!
+        ``parameter`` names which parameter to look under. Also level type and level
+        is required to be specified. It exists because the v1 layout puts
+        /r/<run>/ below the parameter, and below lvt1/lv1 for 3-D fields.
+        There is therefore no run listing at model level.
+        A run can appear here while it is still being published!
 
-        Raises UnknownModelError, or UnknownParameterError if probe is given
+        Raises UnknownModelError, or UnknownParameterError if a parameter is given
         but not available.
         """
         ...
@@ -111,7 +114,10 @@ class Catalogue(Protocol):
         ...
 
     def refresh(self) -> None:
-        """Drop cached state so the next call re-builds the catalogue from the server."""
+        """Drop cached state so the next call re-builds from the server.
+
+        TODO caching
+        """
         ...
 
     def close(self) -> None:

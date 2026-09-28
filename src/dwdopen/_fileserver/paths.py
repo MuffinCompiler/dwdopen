@@ -30,10 +30,11 @@ def build_path(
     DWD's newsletter of 2 September 2026 documents only m, p, lvt1, lv1, r, e, s
     and states that lvt1/lv1 are omitted for single-level parameters. wvl1 is
     not in that list at all: it appears under ICON-ART parameters on the server
-    but is documented nowhere current, which is why unknown keys pass through
-    here untouched rather than being validated against a fixed set. This also allows
-    us in future to support further keys in experimental models without changes to
-    this Python package.
+    but is documented not in that document.
+    Therefore, we allow unknown keys to be passed through rather than validating against
+    a fixed set of keys (m, r, e, s...). This also allows us in future to
+    support further
+    keys directly without having to change any code here.
 
     Directories get a trailing slash because nginx answers 301 without one.
     """

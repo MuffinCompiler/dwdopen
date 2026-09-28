@@ -26,7 +26,7 @@ LARGE_DOWNLOAD = 2 * 1024**3
 planning stage.
 """
 
-RETRY_STATUS = frozenset({404, 408, 425, 429, 500, 502, 503, 504})
+RETRY_STATUS = {404, 408, 425, 429, 500, 502, 503, 504}
 """HTTP error statuses worth a retry. 404 is handled separately."""
 
 
@@ -64,6 +64,9 @@ class HttpDownloader:
         combine: CombineMode = "all",
         temp_dir: Path | None = None,
     ) -> Fetched:
+        """Fetches the given assets to the destination path. Calls either fetch
+        separately or combined depending on the combine flag.
+        """
         destination = Path(destination)
         if not assets:
             logger.info("nothing to download")
@@ -77,20 +80,18 @@ class HttpDownloader:
         self._report(fetched, combine)
         return fetched
 
-    # --- layouts ----------------------------------------------------------
-
     def _fetch_separately(
         self, assets: Sequence[Asset], destination: Path, temp_dir: Path | None
     ) -> Fetched:
         """One file per asset, named after its keys, inside one directory."""
         destination.mkdir(parents=True, exist_ok=True)
-        staging = temp_dir or destination
+        staging = destination if temp_dir is None else temp_dir
 
-        targets = [destination / local_name(asset.keys) for asset in assets]
-        sizes = self._fetch_all(assets, targets, staging)
+        target_paths = [destination / local_name(asset.keys) for asset in assets]
+        sizes = self._fetch_all(assets, target_paths, staging)
         # A zero size asset means the file was already there, thus it was skipped.
         return Fetched(
-            files=tuple(targets),
+            files=tuple(target_paths),
             bytes_downloaded=sum(sizes),
             skipped=sum(1 for size in sizes if size == 0),
         )
@@ -101,40 +102,52 @@ class HttpDownloader:
         """Every message concatenated into one GRIB2 file.
         GRIB2 messages are self-delimiting, each carrying its own length and
         terminator, so joining the bytes of several files is a valid file.
-        The parts are downloaded into a directory private to this call, and the
-        concatenation reads that directory's files by the list it was given.
+        The parts are downloaded into temp_dir if given, before concatenating.
         """
         destination.parent.mkdir(parents=True, exist_ok=True)
-        staging = self._private_directory(temp_dir or destination.parent)
-        try:
-            parts = [staging / f"{index:08d}.part" for index in range(len(assets))]
-            sizes = self._fetch_all(assets, parts, staging)
+        parent = destination.parent if temp_dir is None else temp_dir
+        staging_dir = self._private_directory(parent)
 
-            merged = staging / "merged"
+        try:
+            parts = [staging_dir / f"{index:08d}.part" for index in range(len(assets))]
+            sizes = self._fetch_all(assets, parts, staging_dir)
+
+            # Merge into the staging directory first, never straight into
+            # the destination. Writing there directly would leave a partial
+            # file under the final name if the process died mid-merge.
+            merged = staging_dir / "merged"
             with merged.open("wb") as out:
                 for part in parts:
                     with part.open("rb") as chunk:
                         shutil.copyfileobj(chunk, out)
+
+            # os.replace is atomic within a filesystem: the destination holds
+            # either the old file or the whole new one, never half.
             os.replace(merged, destination)
         finally:
-            shutil.rmtree(staging, ignore_errors=True)
+            # Remove temp files.
+            shutil.rmtree(staging_dir, ignore_errors=True)
 
         return Fetched(files=(destination,), bytes_downloaded=sum(sizes))
-
-    # --- transfer ---------------------------------------------------------
 
     def _fetch_all(
         self, assets: Sequence[Asset], targets: Sequence[Path], staging: Path
     ) -> list[int]:
         """Fetch every asset into its target, in parallel."""
-        workers = max(1, min(self._max_workers, len(assets)))
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            return list(
-                pool.map(
-                    lambda pair: self._fetch_one(pair[0], pair[1], staging),
-                    zip(assets, targets, strict=True),
-                )
+        if len(assets) != len(targets):
+            raise ValueError(
+                f"{len(assets)} assets but {len(targets)} targets"
             )
+
+        # Num workers: As specified, or number of assets to get.
+        workers = max(1, min(self._max_workers, len(assets)))
+
+        def fetch(asset: Asset, target: Path) -> int:
+            return self._fetch_one(asset, target, staging)
+
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            # Returns list of download sizes for the assets.
+            return list(pool.map(fetch, assets, targets))
 
     def _fetch_one(self, asset: Asset, target: Path, staging: Path) -> int:
         """Fetch one asset, write it to the specified target.
@@ -145,6 +158,10 @@ class HttpDownloader:
             logger.debug("skipping %s, already downloaded", target)
             return 0
 
+        # Write into a partial/staging directory instead of the target path.
+        # This makes sure two processes downloading the same asset to not have
+        # a race condition on the file access and write. After downloading,
+        # os.replace() makes an atomic move into the target file.
         payload = self._get_with_retries(asset)
         partial = staging / temp_name(target.name)
         partial.write_bytes(payload)
@@ -162,9 +179,10 @@ class HttpDownloader:
                 # Get limit of retries for the error code.
                 limit = 1
                 if exc.status is None or exc.status in RETRY_STATUS:
+                    # Set limit based on error code, if retrying makes actual sense.
                     limit = self._max_attempts
                 if attempt >= limit:
-                    raise
+                    raise # Abort after N retries
                 delay = self._backoff * 2 ** (attempt - 1)
                 logger.warning(
                     "attempt %d/%d for %s failed (%s), retrying in %.1fs",
@@ -173,7 +191,7 @@ class HttpDownloader:
                 time.sleep(delay)
                 attempt += 1
 
-    # --- helpers ----------------------------------------------------------
+    # Private helpers
 
     def _private_directory(self, parent: Path) -> Path:
         """A staging directory private to this process."""
@@ -186,16 +204,22 @@ class HttpDownloader:
         self, assets: Sequence[Asset], destination: Path, combine: CombineMode
     ) -> None:
         """Announcing the download before it starts (e.g. inform user about size)."""
-        known = [asset.size for asset in assets if asset.size is not None]
-        total = sum(known) if len(known) == len(assets) else None
+        asset_sizes = [asset.size for asset in assets if asset.size is not None]
+        total = sum(asset_sizes) if len(asset_sizes) == len(assets) else None
         size = "unknown size" if total is None else human_size(total)
+
         message = "downloading %d assets (%s) to %s, combine=%s"
         args = (len(assets), size, destination, combine)
+
         if total is not None and total >= LARGE_DOWNLOAD:
+            # Inform user about a large request.
             logger.info(message + " - this is a large request.", *args)
         else:
             logger.info(message, *args)
 
+        # Also warn the user if there are multiple level types in the request and
+        # combine="all" is set: Multiple level types in a single GRIB file is valid
+        # but makes many problems with software reading GRIB files.
         if combine == "all":
             self._warn_about_mixed_level_types(assets)
 

@@ -21,18 +21,13 @@ from dwdopen.nwp.request import Downloader
 __all__ = ["DWD", "NWP"]
 
 DEFAULT_BASE_URL = "https://opendata.dwd.de"
-"""Production Open Data root.
-
-DWD also runs a test branch at https://opendata.dwd.de/test, which currently
-carries the test data for the 6 October 2026 ICON-EU grid change.
+"""Open Data root.
+DWD also runs a test branch at https://opendata.dwd.de/test.
 """
 
 
 class NWP:
     """Namespace for numerical weather prediction data.
-
-    A namespace so other DWD domains (observations, radar, ...) can be added
-    later without crowding DWD itself.
     """
 
     __slots__ = ("_catalogue", "_downloader")
@@ -50,13 +45,14 @@ class NWP:
     def model(self, name: str) -> Model:
         """A handle on one model.
         The name is validated against the catalogue, case-insensitive.
-        This is therefore the first call that may touch the network. The model
-        listing is cached, so further calls are free (or until cache has been invalidated).
+        This is therefore the first call that may send a request.
         """
-        available = self._catalogue.models()
-        canonical = resolve_name(name, available)
+        available_models = self._catalogue.models()
+        canonical = resolve_name(name, available_models)
         if canonical is None:
-            raise UnknownModelError(unknown_name_message("model", name, available))
+            raise UnknownModelError(
+                unknown_name_message("model", name, available_models)
+            )
         return Model(canonical, self._catalogue, self._downloader)
 
     def __repr__(self) -> str:
@@ -90,50 +86,54 @@ class DWD:
     ) -> None:
         """
         base_url
-            Open Data root. Point at .../test to read the test branch.
+            Open Data root.
         timeout
             Per-request timeout in seconds.
         max_connections
             Upper bound on concurrent requests. Can be a throughput knob as we
             enumerate and download thousands of files possibly.
         catalogue
-            Inject an alternative implementation, such as a fake in tests or a
-            different index strategy. When None the Open Data traversal
-            catalogue is built lazily on first use.
+            The implementation of the OpenData catalogue.
         downloader
-            Same, for fetching the bytes of a resolved request.
+            For fetching the bytes of a resolved request.
         """
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
         self._max_connections = max_connections
         self._catalogue = catalogue
         self._downloader = downloader
+        self._http: HttpClient | None = None
 
     @cached_property
     def nwp(self) -> NWP:
         return NWP(self._ensure_catalogue(), self._ensure_downloader())
 
-    @cached_property
-    def _http(self) -> HttpClient:
+    def _ensure_http(self) -> HttpClient:
         """One connection pool, shared by the catalogue and the downloader.
+
+        Built on demand, so a client given an injected catalogue never opens
+        one, and close() has something plain to test rather than having to ask
+        whether a cached property was ever read.
         """
-        return HttpClient(
-            self._base_url,
-            timeout=self._timeout,
-            max_connections=self._max_connections,
-        )
+        if self._http is None:
+            self._http = HttpClient(
+                self._base_url,
+                timeout=self._timeout,
+                max_connections=self._max_connections,
+            )
+        return self._http
 
     def _ensure_catalogue(self) -> Catalogue:
         if self._catalogue is None:
             self._catalogue = OpenDataCatalogue(
-                self._http, max_workers=self._max_connections
+                self._ensure_http(), max_workers=self._max_connections
             )
         return self._catalogue
 
     def _ensure_downloader(self) -> Downloader:
         if self._downloader is None:
             self._downloader = HttpDownloader(
-                self._http, max_workers=self._max_connections
+                self._ensure_http(), max_workers=self._max_connections
             )
         return self._downloader
 
@@ -146,7 +146,7 @@ class DWD:
         """Release the connection pool."""
         if self._catalogue is not None:
             self._catalogue.close()
-        if "_http" in self.__dict__:
+        if self._http is not None:
             self._http.close()
 
     def __enter__(self) -> Self:

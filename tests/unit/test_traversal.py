@@ -102,13 +102,13 @@ def test_parameters_addresses_the_right_path():
 
 def test_runs_are_parsed_as_utc_and_ordered_oldest_first():
     http = ScriptedHttp(deterministic_pages())
-    runs = OpenDataCatalogue(http).runs("icon-eu", probe="T_2M")
+    runs = OpenDataCatalogue(http).runs("icon-eu", parameter="T_2M")
     assert runs == [Run.coerce("2026-09-15T18:00"), Run.coerce("2026-09-16T00:00")]
     assert http.paths[-1] == "weather/nwp/v1/m/icon-eu/p/T_2M/r/"
 
 
-def test_runs_without_a_probe_says_so():
-    with pytest.raises(NotImplementedError, match="probe"):
+def test_runs_without_a_parameter_says_so():
+    with pytest.raises(NotImplementedError, match="parameter"):
         OpenDataCatalogue(FakeHttp(RUNS)).runs("icon-eu")
 
 
@@ -134,7 +134,7 @@ def test_a_multi_level_parameter_says_what_is_there_instead():
     # .../p/T/r/ does not exist: the runs sit below lvt1/<type>/lv1/<level>/.
     http = ScriptedHttp({"m/icon-eu/p/T/": MULTI_LEVEL_PARAMETER})
     with pytest.raises(NotImplementedError, match="contains lvt1/, not r/"):
-        OpenDataCatalogue(http).runs("icon-eu", probe="T")
+        OpenDataCatalogue(http).runs("icon-eu", parameter="T")
 
 
 def test_an_ensemble_says_what_is_there_instead():
@@ -158,7 +158,7 @@ def test_a_genuine_outage_stays_a_catalogue_error():
     # must not be dressed up as an unsupported selection.
     http = ScriptedHttp({"m/icon-eu/p/T_2M/": PLAIN_PARAMETER})
     with pytest.raises(CatalogueUnavailableError):
-        OpenDataCatalogue(http).runs("icon-eu", probe="T_2M")
+        OpenDataCatalogue(http).runs("icon-eu", parameter="T_2M")
 
 
 def test_the_happy_path_costs_no_extra_listing():

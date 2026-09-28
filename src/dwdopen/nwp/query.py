@@ -55,8 +55,7 @@ class Query:
 
     A query says "what" to retrieve; resolve() and download() say "which" run.
     Keeping the two apart is what lets one query be resolved against several runs,
-     and helps us to be able to combine queries.
-
+    and helps us to be able to combine queries.
     Use Model.select() to construct a query.
     """
 
@@ -100,11 +99,11 @@ class Query:
         server must be "settled". Thus, a run still being published is skipped, so
         this is not the same as Model.latest_run.
         """
-        probe = self._parameters[0]
-        probe_levels = self._wanted_levels(probe)
+        first = self._parameters[0]
+        probe_levels = self._wanted_levels(first)
         candidates = self._catalogue.runs(
             self._model,
-            probe=probe,
+            parameter=first,
             level_type=self._level_type,
             level=probe_levels[0] if probe_levels else None,
         )
@@ -114,7 +113,7 @@ class Query:
             try:
                 request = self.resolve(run=run, require=require)
             except (IncompleteRunError, RunExpiredError):
-                # A run can be listed for the probe parameter and
+                # A run can be listed for the parameter we probed with and
                 # still be absent for another, because parameters are not
                 # published at the same moment.
                 continue
@@ -158,6 +157,8 @@ class Query:
                 levels=self._wanted_levels(parameter),
                 members=self._wanted_members(parameter, resolved_run),
             )
+            # Check which assets are wanted and absent from the available assets by
+            # checking the catalogue entries.
             wanted, absent = _select_steps(available, self._steps)
             assets.extend(wanted)
             missing.extend(MissingStep(parameter, step) for step in absent)
@@ -188,6 +189,7 @@ class Query:
         if self._level_type is None:
             return None
         available = self._catalogue.levels(self._model, parameter, self._level_type)
+        # Return the subset of available levels that match the levels asked by the user.
         return _select_levels(available, self._levels, self._level_type)
 
     def _wanted_members(self, parameter: str, run: Run) -> list[int] | None:
@@ -205,6 +207,7 @@ class Query:
         )
         if not available:
             return None
+        # The subset of available members that the user asked for.
         return _select_members(available, self._members)
 
     def download(
@@ -284,8 +287,8 @@ def _select_levels(
         ]
 
     if isinstance(selector, Every):
-        wanted = _expand_level_cadence(selector, kind)
-    elif isinstance(selector, int | float | Decimal):
+        wanted = _expand_every_level(selector, kind)
+    elif isinstance(selector, (int, float, Decimal)):
         wanted = [kind.to_server(selector)]
     else:
         wanted = [kind.to_server(item) for item in selector]
@@ -302,15 +305,20 @@ def _select_levels(
     return wanted
 
 
-def _expand_level_cadence(
+def _expand_every_level(
     selector: Every[LevelScalar], kind: LevelType
 ) -> list[Decimal]:
-    """Every(1, 10, 1) over model levels -> 1, 2, ..., 10 (inclusive)."""
+    """Expand an Every selector into the level values it names.
+
+    Every(1, 10, 1) over model levels means 1, 2, ..., 10, both ends included.
+    """
     start = kind.to_server(selector.start)
     stop = kind.to_server(selector.stop)
     step = kind.to_server(selector.every)
     if step <= 0:
-        raise InvalidSelectorError(f"a level cadence must be positive, got {step}")
+        raise InvalidSelectorError(
+            f"the step between levels must be positive, got {step}"
+        )
     values = []
     current = start
     while current <= stop:
@@ -357,8 +365,8 @@ def _select_steps(
 
     # Every or specific time deltas: Collect the wanted forecast steps.
     if isinstance(selector, Every):
-        wanted = _expand_cadence(selector)
-    elif isinstance(selector, str | timedelta):
+        wanted = _expand_every_step(selector)
+    elif isinstance(selector, (str, timedelta)):
         wanted = [parse_duration(selector)]
     else:
         wanted = [parse_duration(item) for item in selector]
@@ -369,14 +377,15 @@ def _select_steps(
     return found, absent
 
 
-def _expand_cadence(selector: Every[StepScalar]) -> list[timedelta]:
+def _expand_every_step(selector: Every[StepScalar]) -> list[timedelta]:
     """Every("0h", "48h", "3h") -> 0h, 3h, ..., 48h (inclusive interval)."""
     start = parse_duration(selector.start)
     stop = parse_duration(selector.stop)
     every = parse_duration(selector.every)
     if every <= timedelta(seconds=0):
         raise InvalidSelectorError(
-            f"a cadence must be positive, got {format_duration(every)}"
+            f"the step between values must be positive, got "
+            f"{format_duration(every)}"
         )
     steps = []
     current = start

@@ -30,8 +30,7 @@ def parse_duration(value: StepScalar) -> timedelta:
         return value
 
     if not isinstance(value, str):
-        # Unreachable per StepScalar, which is exactly why it is here: an
-        # annotation does not stop anyone passing steps=[0, 6, 12] at runtime.
+        # Need to be string, like "3h"... Numbers only would be ambiguous.
         raise InvalidSelectorError(_not_a_step(value))
 
     # String match
@@ -48,7 +47,7 @@ def parse_duration(value: StepScalar) -> timedelta:
 def _not_a_step(value: object) -> str:
     """Explain why a value cannot be a forecast step.
     """
-    if isinstance(value, int | float):
+    if isinstance(value, (int, float)):
         # Number is missing a unit
         return (
             f"a forecast step needs its unit, got {value!r}. Write "
@@ -89,7 +88,7 @@ def check_step_selector(selector: StepSelector | None) -> None:
     elif isinstance(selector, Every):
         for bound in (selector.start, selector.stop, selector.every):
             parse_duration(bound)
-    elif isinstance(selector, str | timedelta | int | float):
+    elif isinstance(selector, (str, timedelta, int, float)):
         parse_duration(selector)
     else:
         for item in selector:
@@ -138,6 +137,7 @@ def minutes(*values: float | Iterable[float]) -> timedelta | tuple[timedelta, ..
 def _durations(
     unit: str, values: tuple[float | Iterable[float], ...]
 ) -> timedelta | tuple[timedelta, ...]:
+    """Parse values (iterable...) given a unit (hours, minutes) into timedeltas."""
     if not values:
         raise InvalidSelectorError(f"{unit}() needs at least one value")
 
@@ -152,7 +152,8 @@ def _durations(
 
 
 def _one(unit: str, value: object) -> timedelta:
-    if isinstance(value, bool) or not isinstance(value, int | float):
+    """Parse one value given its unit (hours, minutes) into a timedelta."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise InvalidSelectorError(
             f"{unit}() takes numbers, got {value!r} of type "
             f"{type(value).__name__}"

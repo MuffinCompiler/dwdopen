@@ -188,7 +188,8 @@ retries and mixed level types.
 - [ ] Feedback of download progress (bar, text, visual?)
 - [ ] ICON-ART wavelengths (the `wvl1` segment).
 - [ ] A command-line interface.
-- [ ] Automatic probe parameter for `Model.latest_run()`, which needs `probe=` at the moment.
+- [ ] Automatic parameter choice for `Model.latest_run()`, which needs
+      `parameter=` at the moment.
 
 ## License
 

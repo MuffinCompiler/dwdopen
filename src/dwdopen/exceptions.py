@@ -81,12 +81,7 @@ class MissingAssetError(ResolutionError):
 
 class RunExpiredError(ResolutionError):
     """Assets resolved earlier have since disappeared.
-
-    Retention is short and differs per model. Counted on 2026-09-18: ICON-EU
-    and ICON-D2 keep 8 runs (3-hourly, ~24 h), ICON and the ensembles 4
-    (6-hourly, ~24 h), ICON-D2-RUC 24 (hourly). A missing asset is not proof of
-    expiry though! Several servers sit behind opendata.dwd.de and they are not
-    perfectly in sync.
+    Retention is short and differs per model; roughly 24 hours.
     """
 
 
@@ -113,26 +108,19 @@ def unknown_name_message(
     context: str | None = None,
     max_listed: int = 20,
 ) -> str:
-    """Build an actionable message for an unknown model or parameter name.
-
-    Only the offending name is quoted, so that a trailing space or an empty
-    string is visible; suggestions and the list of available names are not,
-    quotes only add noise there.
-
-    All names are listed only when there are few of them: 13 models fit into a
-    message, 95 parameters do not.
+    """Build a user message for an unknown model or parameter name.
+    All names are listed only when there are few of them. It won't print all
+    available parameters if the requested parameter does not exist.
     """
     subject = f"unknown {kind} {name!r}"
     if context:
         subject += f" for {context}"
     parts = [subject + "."]
 
-    # Fold the case before comparing. DWD's own documentation writes the same
-    # parameter both ways, and the legacy layout used lowercase where v1 uses
-    # uppercase, so a wrong-case name is a likely mistake rather than a typo.
-    # Compared case-sensitively, "t_2m" scores below the cutoff against "T_2M"
-    # and the caller gets no suggestion at all.
+    # Case fold the parameters before comparing.
     folded = {item.casefold(): item for item in available}
+    # Look for "close" matches to help the user, for example if they made a
+    # spelling error in the model or parameter.
     matches = get_close_matches(name.casefold(), list(folded), n=3, cutoff=0.6)
     close = [folded[match] for match in matches]
     if close:

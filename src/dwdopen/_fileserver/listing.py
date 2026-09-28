@@ -26,7 +26,13 @@ class ListingEntry:
     is_dir: bool
 
     modified: datetime | None = None
-    """In UTC. Used to see if files have settled. Might be not available."""
+    """In UTC. Used to see if files have settled: We only accept a list entry
+    if it already exists on the server for a minute or so. Otherwise, the writing
+    might not have finished on the server, or, as DWD has multiple servers that
+    are not exactly in sync, we might later want to request that file from a
+    server that still does not have the file yet.
+
+     Might be not available if entry is a directory."""
 
     size: int | None = None
     """Bytes. None for directories."""
@@ -57,7 +63,7 @@ _MONTHS = {
 def parse_listing(html: str) -> list[ListingEntry]:
     """Parse one nginx autoindex page.
 
-    The parent link is skipped; every other entry is a child of the listed
+    The parent dir entry is skipped; every other entry is a child of the listed
     directory.
     An unreadable page yields an empty list. The caller should know which
     directories have children. An empty page might be as valid, if there are

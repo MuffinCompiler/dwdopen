@@ -95,8 +95,7 @@ class Asset:
         return dict(self.keys)["m"]
 
     def describe_level(self) -> str:
-        """The vertical position in the unit a reader thinks in.
-
+        """The vertical level in the unit the reader operates in.
         Empty for a 2-D field. Pressure comes back as "850 hPa" rather than the
         85000 Pa of the path, because that is what was asked for.
         """
@@ -156,7 +155,9 @@ class Fetched:
 
 
 class Downloader(Protocol):
-    """Moves the bytes of a frozen plan onto disk."""
+    """Moves the bytes of a frozen plan onto disk. This is the interface for
+    downloaders implementing this task.
+    """
 
     def fetch(
         self,
@@ -166,7 +167,7 @@ class Downloader(Protocol):
         combine: CombineMode = "all",
         temp_dir: Path | None = None,
     ) -> Fetched:
-        """Fetch every asset and lay it out under ``destination``.
+        """Fetch every asset and save it under ``destination``.
 
         ``assets`` is taken in the order given and that order is preserved in a
         combined file, so the caller decides the message order.
@@ -175,9 +176,7 @@ class Downloader(Protocol):
         combine="all".
 
         ``temp_dir`` overrides where partial downloads are written. It must sit
-        on the same filesystem as the destination: a finished file is published
-        by renaming it, and a rename cannot cross filesystems. It defaults to
-        the destination's own directory, which always satisfies that.
+        on the same filesystem as the destination.
         """
         ...
 
@@ -199,19 +198,11 @@ class DownloadResult:
         """Bytes actually transferred."""
         return self.bytes_downloaded
 
-    def __fspath__(self) -> str:
-        """Allow a single-file result to be used where a path is expected."""
-        if len(self.files) != 1:
-            raise TypeError(
-                f"this result holds {len(self.files)} files, so it is not a "
-                f"single path. Use .files"
-            )
-        return os.fspath(self.files[0])
 
 
 @dataclass(frozen=True)
 class ResolvedRequest:
-    """A frozen plan: A resolved request contains the list of assets to download,
+    """A "frozen" plan: A resolved request contains the list of assets to download,
     basically all the URL to fetch data from.
     A later download never switches to a newer run. If files have disappeared
     in the meantime, the download fails.
@@ -225,8 +216,7 @@ class ResolvedRequest:
     downloader: Downloader | None = field(
         default=None, compare=False, repr=False
     )
-    """How to fetch the assets. Not part of the plan's identity, so two plans
-    resolved from different clients still compare equal."""
+    """How to fetch the assets."""
 
     def download(
         self,
@@ -360,7 +350,7 @@ class ResolvedRequest:
             icon-eu_2026-09-24T0600_T_2M+PMSL_0h-24h_a3f91c2e.grib2
             icon_2026-09-24T0000_P_120lv_0h-180h_09c1f0c5.grib2
 
-        More than three parameters are counted rather than listed.
+        More than three parameters are counted instead of listed.
         """
         if not self.assets:
             raise DownloadError("cannot name an empty plan")
@@ -399,7 +389,9 @@ class ResolvedRequest:
         return f"{len(names)}params"
 
     def _describe_levels(self) -> str:
-        """The vertical coordinate, empty for a 2-D selection."""
+        """Describe the levels, empty for 2-D.
+        Lists levels and level types.
+        """
         levels = {a.level for a in self.assets if a.level is not None}
         kinds = {a.level_type for a in self.assets if a.level_type is not None}
         if not kinds:
@@ -486,7 +478,7 @@ class ResolvedRequest:
 
 
 def human_size(size: int) -> str:
-    """Bytes as something a person can read at a glance."""
+    """Coverts bytes to human-readable format."""
     value = float(size)
     for unit in ("B", "KB", "MB", "GB"):
         if value < 1024 or unit == "GB":
