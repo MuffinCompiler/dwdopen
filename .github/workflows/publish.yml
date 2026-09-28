@@ -1,0 +1,43 @@
+name: Publish to PyPI
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install -e ".[dev]"
+      # Skip the live tests, in cause the open data server is unavailable.
+      - run: python -m pytest -q -m "not live"
+      - run: python -m mypy src
+      - run: python -m ruff check src tests
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install build
+      - run: python -m build
+      - name: Check the tag matches the version
+        run: |
+          version=$(ls dist/*.tar.gz | sed 's/.*dwdopen-\(.*\)\.tar\.gz/\1/')
+          tag="${GITHUB_REF_NAME#v}"
+          echo "tag=$tag package=$version"
+          test "$version" = "$tag"
+      - uses: pypa/gh-action-pypi-publish@release/v1

@@ -2,6 +2,11 @@
 
 Versions follow [semantic versioning](https://semver.org/).
 
+## 0.2.2
+
+- README updated.
+- Releases now publish automatically from a version tag.
+
 ## 0.2.1
 
 - Lowered floor to Python 3.11.

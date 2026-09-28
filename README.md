@@ -9,10 +9,10 @@ and download it.
 
 ## Install
 
-Requires **Python 3.12+**.
+Requires **Python 3.11 or newer**.
 
 ```bash
-pip install git+https://github.com/MuffinCompiler/dwdopen@v0.1.0
+pip install dwdopen
 ```
 
 ## Quickstart
@@ -27,28 +27,7 @@ with DWD() as dwd:
     query.download("forecast.grib2")
 ```
 
-Nothing touches the network until a call needs availability information.
-
-### Investigate your request before you download
-
-`resolve()` freezes a query against one run and hands back a plan you can inspect before
-any download happens:
-
-```python
-plan = icon_eu.select(parameters="U", level_type="pressure").resolve()
-print(plan)
-# ResolvedRequest(run=2026-09-23T06:00:00+00:00, 1860 assets, 1.5 GB, U,
-#                 on pressure (100), 20 levels, steps 0h..120h)
-
-print(plan.assets[0])
-# Asset(U, 50 hPa, 0h, 723.4 KB)
-
-plan.download("u.grib2")
-```
-
-A plan never switches to a newer run later, so what you inspected is what you get.
-
-### Discovery
+## Discovery
 
 ```python
 dwd.nwp.models()                    # every model DWD currently publishes
@@ -56,9 +35,6 @@ icon_eu.parameters()                # every parameter of one model
 icon_eu.parameter("T").level_types  # (pressure (100), model (150))
 icon_eu.levels("T", "pressure")     # available level values
 ```
-
-Everything comes from the live catalogue, so a parameter
-DWD adds should show up without a new dwdopen release.
 
 ## Selecting
 
@@ -104,9 +80,6 @@ eps.select(parameters="T_2M")                       # every member
 ```
 
 Leaving `members` out takes all of them, the same as levels and steps.
-Ensembles publish a reduced level set: `icon-eu-eps` `T` has 3 pressure levels
-and 3 model levels, against 20 and 74 for deterministic ICON-EU. Check the output of
-`model.levels()` to see what is actually there.
 
 ### Vertical levels
 
@@ -127,6 +100,25 @@ icon_d2.select(parameters="HSURF", steps="0h")                      # no level t
 icon_d2.select(parameters="HHL", level_type="model", levels="all")
 ```
 
+## Investigate before you download
+
+`resolve()` freezes a query against one run and hands back a plan you can inspect before
+any download happens:
+
+```python
+plan = icon_eu.select(parameters="U", level_type="pressure").resolve()
+print(plan)
+# ResolvedRequest(run=2026-09-23T06:00:00+00:00, 1860 assets, 1.5 GB, U,
+#                 on pressure (100), 20 levels, steps 0h..120h)
+
+print(plan.assets[0])
+# Asset(U, 50 hPa, 0h, 723.4 KB)
+
+plan.download("u.grib2")
+```
+
+A plan never switches to a newer run later, so what you inspected is what you get.
+
 ## Downloading
 
 ```python
@@ -136,9 +128,9 @@ query.download("forecast/", combine="none")         # one file per message
 query.download("f.grib2", temp_dir="/scratch")      # partial downloads before combining elsewhere
 ```
 
-`combine="all"` concatenates the messages into a single GRIB2 file, which is valid
-because GRIB2 messages are self-delimiting. You can also provide just a directory in
-this case and the name is generated automatically.
+`combine="all"` concatenates the messages into a single GRIB2 file.
+You can also provide just a directory in this case and the name is
+generated automatically.
 
 ```python
 plan = query.resolve()
@@ -146,25 +138,11 @@ plan.suggested_name()            # 'icon-eu_2026-09-24T0600_PMSL+T_2M_0h-24h.gri
 plan.download("/home/weather/")   # writes that name into the directory
 ```
 
-Messages are sorted time-major: every field of one forecast step together, steps
-ascending. Some programs like CDO require grib files to be sorted by time to work
-correctly.
-
 Downloads run concurrently, are written to a temporary name and renamed into place, so a
 partial file is never mistaken for a finished one. Several processes may write the same
-directory at once.
-
-Already downloaded files are skipped, a second run of the same selection transfers nothing:
-A file counts as done when its size matches the catalogue and it starts with `GRIB`
-and ends with `7777`. For `combine="all"` this works when the name was generated, because
-the generated name ends in a hash of the plan and so describes that exact selection.
-
+directory at once. Already downloaded files are skipped.
 `DownloadResult.assets_skipped` says how many were already there, which is worth
-checking in a scheduled job. Nothing is kept between runs. A partial download is discarded,
-so an interrupted job never leaves files behind.
-
-`temp_dir` must be on the same filesystem as the destination, because publishing a
-finished file is a rename and a rename cannot cross filesystems.
+checking in a scheduled job.
 
 ## Logging
 
@@ -181,9 +159,7 @@ retries and mixed level types.
 
 ## Not yet implemented
 
-- [ ] Resume and skip existing files. A failed run currently re-downloads from scratch.
-- [ ] Ensemble members** (`-eps` models, the `e/<NN>/` path segment).
-- [ ] `combine="member"` and `combine="parameter"`.
+- [ ] `combine="parameter"`.
 - [ ] Listing cache. Every call re-reads the catalogue today.
 - [ ] Feedback of download progress (bar, text, visual?)
 - [ ] ICON-ART wavelengths (the `wvl1` segment).
