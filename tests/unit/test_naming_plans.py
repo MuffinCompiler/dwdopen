@@ -37,7 +37,7 @@ def plan(assets):
 def test_one_parameter_names_the_model_run_parameter_and_steps():
     made = plan([asset("T_2M", 0), asset("T_2M", 12)])
     assert made.suggested_name() == (
-        f"icon-eu_2026-09-24T0600_T_2M_0h-12h_{made.fingerprint()}.grib2"
+        f"icon-eu_2026-09-24T0600_T_2M_single_0h-12h_{made.fingerprint()}.grib2"
     )
 
 
@@ -60,35 +60,37 @@ def test_more_parameters_are_counted_so_the_name_stays_short():
     many = [asset(f"P{i:02d}") for i in range(21)]
     name = plan(many).suggested_name()
     assert "21params" in name
-    assert len(name) < 60
+    assert len(name) < 70
 
 
 def test_a_single_pressure_level_is_named_in_hpa():
     name = plan([asset("T", level_type=PRESSURE, level=85000)]).suggested_name()
-    assert "_850hPa_" in name
+    assert "_pressure850hPa_" in name
     assert "85000" not in name
 
 
 def test_several_levels_are_counted():
     assets = [asset("T", level_type=PRESSURE, level=lv) for lv in (85000, 50000)]
-    assert "_2lv_" in plan(assets).suggested_name()
+    assert "_pressure2lv_" in plan(assets).suggested_name()
 
 
 def test_a_model_level_is_labelled_rather_than_given_a_unit():
     # The unit is "index", which reads badly as a suffix.
     name = plan([asset("T", level_type=MODEL, level=60)]).suggested_name()
-    assert "_lv60_" in name
+    assert "_model60_" in name
 
 
 def test_a_soil_level_keeps_its_metres():
     name = plan([asset("T_SO", level_type=SOIL, level="0.18")]).suggested_name()
-    assert "_0.18m_" in name
+    assert "_soil0.18m_" in name
 
 
-def test_a_surface_selection_has_no_level_part():
+def test_a_surface_selection_is_labelled_single():
+    # Named rather than left blank, so a surface file is recognisable as one
+    # instead of merely lacking a field.
     made = plan([asset("T_2M")])
     assert made.suggested_name() == (
-        f"icon-eu_2026-09-24T0600_T_2M_0h_{made.fingerprint()}.grib2"
+        f"icon-eu_2026-09-24T0600_T_2M_single_0h_{made.fingerprint()}.grib2"
     )
 
 
@@ -145,8 +147,10 @@ def test_the_realistic_worst_case_fits():
     ]
     name = plan(assets).suggested_name()
     assert len(name) <= MAX_NAME_LENGTH
-    # Short enough that the names are still listed, not counted.
-    assert "DUST_MAX_TOTAL_MC_LAYER" in name
+    # Three of these no longer fit alongside the level field and the hash, so
+    # the count takes over. Degrading is the point; overflowing is not.
+    assert "3params" in name
+    assert name.endswith(f"_{plan(assets).fingerprint()}.grib2")
 
 
 def test_long_names_fall_back_to_counting_rather_than_overflowing():
@@ -160,7 +164,7 @@ def test_forty_surface_fields_stay_short():
     assets = [asset(f"PARAM_{i:02d}", hours=h) for i in range(40) for h in (0, 120)]
     name = plan(assets).suggested_name()
     assert "40params" in name
-    assert len(name) < 60
+    assert len(name) < 70
 
 
 def test_the_suffix_survives_even_a_pathological_name():

@@ -211,12 +211,15 @@ class Model:
         the level type is unambiguous. Every selected parameter must be available
         on the same level type, or on none at all.
         """
-        if level_type is not None:
-            return LevelType.coerce(level_type)
-
         per_parameter = {
             name: self._catalogue.level_types(self._name, name) for name in parameters
         }
+
+        if level_type is not None:
+            chosen = LevelType.coerce(level_type)
+            self._require_published_on(chosen, per_parameter)
+            return chosen
+
         candidates = {lt for types in per_parameter.values() for lt in types}
 
         if not candidates:
@@ -242,3 +245,33 @@ class Model:
             )
 
         return candidates.pop()
+
+    def _require_published_on(
+        self,
+        chosen: LevelType,
+        per_parameter: dict[str, list[LevelType]],
+    ) -> None:
+        """Raise InvalidSelectorError if the chosen level type is not
+        available for all the parameters.
+        The usual case is a parameter that only exists on one of the two
+        vertical coordinates. W is on model levels alone, and OMEGA is the
+        pressure-level vertical velocity.
+        """
+        # Get all parameters that are not available on the chosen level type.
+        wrong = {
+            name: level_types
+            for name, level_types in per_parameter.items()
+            if chosen not in level_types
+        }
+        if not wrong:
+            return
+
+        details = "; ".join(
+            f"{name} is on {', '.join(str(t) for t in types) or 'a single level'}"
+            for name, types in sorted(wrong.items())
+        )
+        raise InvalidSelectorError(
+            f"{', '.join(sorted(wrong))} in {self._name!r} "
+            f"{'is' if len(wrong) == 1 else 'are'} not published on {chosen}. "
+            f"{details}"
+        )

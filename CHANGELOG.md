@@ -2,6 +2,14 @@
 
 Versions follow [semantic versioning](https://semver.org/).
 
+## 0.2.3
+
+- Added proper logging, and print some download info by default, so users do not think
+  that the application hangs.
+- Generated file names now contain the level type.
+- Asking for a parameter on a level type it is not available on is now refused at
+  the `select()` stage.
+
 ## 0.2.2
 
 - README updated.

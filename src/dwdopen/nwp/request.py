@@ -395,16 +395,18 @@ class ResolvedRequest:
         levels = {a.level for a in self.assets if a.level is not None}
         kinds = {a.level_type for a in self.assets if a.level_type is not None}
         if not kinds:
-            return ""
+            return "single"
         if len(kinds) > 1:
-            # Put number of level types
             return f"{len(kinds)}lvt"
+
         kind = kinds.pop()
+        # The readable level type name where there is one, otherwise the code.
+        name = kind.alias or f"lvt{kind.code}"
         if len(levels) == 1:
             unit = kind.user_unit or kind.unit or ""
             value = _trim(kind.to_user(levels.pop()))
-            return f"{value}{unit}" if unit != "index" else f"lv{value}"
-        return f"{len(levels)}lv"
+            return f"{name}{value}" if unit == "index" else f"{name}{value}{unit}"
+        return f"{name}{len(levels)}lv"
 
     def _describe_members(self) -> str:
         """The ensemble member, empty for a deterministic plan.

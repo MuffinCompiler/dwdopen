@@ -161,7 +161,12 @@ def test_combine_member_writes_one_file_per_member(tmp_path):
     assert len(result.files) == 2
     # The member is in the name, not only in the hash, or the files would be
     # impossible to tell apart.
-    assert sorted(p.name.split("_T_2M_")[1][:3] for p in result.files) == ["e01", "e02"]
+    assert sorted(
+        part
+        for p in result.files
+        for part in p.name.split("_")
+        if part.startswith("e0")
+    ) == ["e01", "e02"]
     for path in result.files:
         assert grib_messages(path) == 1
 

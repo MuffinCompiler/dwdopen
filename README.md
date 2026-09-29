@@ -146,16 +146,19 @@ checking in a scheduled job.
 
 ## Logging
 
-The library logs through the standard `dwdopen` logger. It never prompts or reads from
-stdin as the library is meant to run unattended.
+The library logs through the `dwdopen` logger. You can change the logging level via::
 
 ```python
-import logging
-logging.basicConfig(level=logging.INFO)
+import logging, dwdopen
+
+dwdopen.set_log_level(logging.DEBUG)    # a line per file to download
+dwdopen.set_log_level(logging.WARNING)  # only retries and warnings
+dwdopen.set_log_level(None)             # disable the dwdopen logging
 ```
 
-`INFO` reports what is about to be downloaded and how large it is. `WARNING` covers
-retries and mixed level types.
+The handler is connected to the `dwdopen` logger. It will not override
+the logging your application sets up for itself. If you do configure your own logger
+and want to use that logger, call `set_log_level(None)`. That will uninstall the handler.
 
 ## Not yet implemented
 

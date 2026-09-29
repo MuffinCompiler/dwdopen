@@ -377,3 +377,69 @@ def test_a_generated_combined_name_is_skipped_on_a_second_run(tmp_path):
     assert second.assets_downloaded == 0
     assert second.files == first.files
     assert len(http.requested) == before  # nothing fetched
+
+
+# --- log level ------------------------------------------------------------
+
+def test_progress_is_visible_without_any_setup():
+    """A download that prints nothing looks like one that hung."""
+    import logging
+
+    logger = logging.getLogger("dwdopen")
+    assert logger.handlers, "dwdopen should attach its own handler on import"
+    assert logger.getEffectiveLevel() <= logging.INFO
+
+
+def test_the_handler_is_never_put_on_the_root_logger():
+    """basicConfig() takes effect once.
+
+    A library that configured the root logger would silently override wherever
+    an application meant its logs to go.
+    """
+    import logging
+
+    import dwdopen
+
+    root_before = list(logging.getLogger().handlers)
+    dwdopen.set_log_level(logging.DEBUG)
+    assert logging.getLogger().handlers == root_before
+    dwdopen.set_log_level()
+
+
+def test_the_level_can_be_turned_up_and_down():
+    import logging
+
+    import dwdopen
+
+    dwdopen.set_log_level(logging.DEBUG)
+    assert logging.getLogger("dwdopen").level == logging.DEBUG
+    dwdopen.set_log_level(logging.WARNING)
+    assert logging.getLogger("dwdopen").level == logging.WARNING
+    dwdopen.set_log_level()
+    assert logging.getLogger("dwdopen").level == logging.INFO
+
+
+def test_none_hands_logging_back_to_the_application(caplog):
+    import logging
+
+    import dwdopen
+
+    dwdopen.set_log_level(None)
+    try:
+        assert dwdopen._handler not in logging.getLogger("dwdopen").handlers
+        # Records still reach an application that configured its own logging.
+        with caplog.at_level(logging.INFO, logger="dwdopen"):
+            logging.getLogger("dwdopen").info("a message")
+        assert "a message" in caplog.text
+    finally:
+        dwdopen.set_log_level()
+
+
+def test_setting_the_level_twice_does_not_duplicate_the_handler():
+    import logging
+
+    import dwdopen
+
+    dwdopen.set_log_level()
+    dwdopen.set_log_level()
+    assert logging.getLogger("dwdopen").handlers.count(dwdopen._handler) == 1

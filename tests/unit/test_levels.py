@@ -216,3 +216,30 @@ def test_an_invariant_field_is_selected_without_a_level_type():
     # HSURF, CLAT, FR_LAND and friends are plain 2-D parameters in v1.
     model = model_with({"HSURF": []})
     assert model.select(parameters="HSURF", steps="0h")._level_type is None
+
+
+def test_a_parameter_not_on_the_requested_level_type_is_refused():
+    """W exists on model levels only; OMEGA is the pressure-level equivalent.
+
+    Caught at select(), so the error names the call the caller wrote instead
+    of surfacing as a 404 on an lv1 listing partway through resolve().
+    """
+    model = model_with({"U": [PRESSURE, MODEL], "W": [MODEL]})
+    with pytest.raises(InvalidSelectorError) as caught:
+        model.select(parameters=["U", "W"], level_type="pressure", levels=[850])
+    message = str(caught.value)
+    assert "W" in message
+    assert "not published on pressure" in message
+    assert "model (150)" in message      # says what it does have
+
+
+def test_a_surface_parameter_asked_for_on_levels_is_refused():
+    model = model_with({"T_2M": []})
+    with pytest.raises(InvalidSelectorError, match="single level"):
+        model.select(parameters="T_2M", level_type="pressure", levels=[850])
+
+
+def test_a_parameter_that_does_have_the_level_type_is_accepted():
+    model = model_with({"U": [PRESSURE, MODEL], "V": [PRESSURE, MODEL]})
+    query = model.select(parameters=["U", "V"], level_type="pressure", levels=[850])
+    assert query._level_type is PRESSURE
