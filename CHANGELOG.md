@@ -2,6 +2,13 @@
 
 Versions follow [semantic versioning](https://semver.org/).
 
+## 0.3.0
+
+- `combine="parameter"` implemented which writes one file per parameter. Refactored
+   the combining so it can conceptually group by any "group" now.
+- `runs()` and `latest_run()` no longer need parameter and level type. Using some
+   2-D fields as basic "probing" parameters, that are available on all models DWD offers.
+
 ## 0.2.3
 
 - Added proper logging, and print some download info by default, so users do not think

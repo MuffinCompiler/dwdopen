@@ -43,9 +43,8 @@ MAX_NAME_LENGTH = 120
 
 logger = logging.getLogger("dwdopen")
 
-CombineMode = Literal["none", "all", "member"]
+CombineMode = Literal["none", "all", "member", "parameter"]
 """How the downloaded messages are laid out on disk.
-TODO per parameter
 """
 
 
@@ -242,8 +241,8 @@ class ResolvedRequest:
                 "fetch anything. Build queries from DWD().nwp"
             )
 
-        if combine == "member":
-            return self._download_per_member(destination, temp_dir)
+        if combine in ("member", "parameter"):
+            return self._download_grouped(destination, temp_dir, combine)
 
         # Get the target file name.
         target, generated = self._target(destination, combine)
@@ -274,42 +273,46 @@ class ResolvedRequest:
             assets_skipped=fetched.skipped,
         )
 
-    def _download_per_member(
+    def _download_grouped(
         self,
         destination: str | os.PathLike[str],
         temp_dir: str | os.PathLike[str] | None,
+        combine: CombineMode,
     ) -> DownloadResult:
-        """Download one combined file per ensemble member.
-        Each member is just a smaller plan over the same run, so it is split
-        into one and downloaded as combine="all". Everything then comes for
-        free: the generated name, its fingerprint over that member's own
-        assets...
+        """Download into one combined file per group. Currently supported:
+        parameter, member.
+        Each group is just a smaller plan over the same run, so it is split
+        into one and downloaded as combine="all".
         """
-        groups: dict[int, list[Asset]] = {}
-        for asset in self.assets:
-            if asset.member is None:
-                raise InvalidSelectorError(
-                    'combine="member" needs an ensemble model, but this plan '
-                    "has no members. Use combine=\"all\" or \"none\""
-                )
-            groups.setdefault(asset.member, []).append(asset)
 
-        # A directory, because every member needs its own name.
+        by_member = (combine == "member")
+        if by_member and any(asset.member is None for asset in self.assets):
+            raise InvalidSelectorError(
+                'combine="member" needs an ensemble model, but this plan '
+                'has no members. Use combine="all" or "none"'
+            )
+
+        groups: dict[object, list[Asset]] = {}
+        for asset in self.assets:
+            group = asset.member if by_member else asset.parameter
+            groups.setdefault(group, []).append(asset)
+
+        # A directory, because every group needs its own name.
         folder = Path(destination)
         folder.mkdir(parents=True, exist_ok=True)
 
-        # Iterate over every member and download() each one.
+        # Iterate over every group and download() each one.
         files: list[Path] = []
         downloaded = skipped = transferred = 0
-        for member in sorted(groups):
-            one = replace(self, assets=tuple(groups[member]))
+        for key in sorted(groups, key=str):
+            one = replace(self, assets=tuple(groups[key]))
             result = one.download(folder, combine="all", temp_dir=temp_dir)
             files.extend(result.files)
             downloaded += result.assets_downloaded
             skipped += result.assets_skipped
             transferred += result.bytes_downloaded
 
-        logger.info("wrote %d member files to %s", len(files), folder)
+        logger.info("wrote %d %s files to %s", len(files), combine, folder)
         return DownloadResult(
             files=tuple(files),
             run=self.run,

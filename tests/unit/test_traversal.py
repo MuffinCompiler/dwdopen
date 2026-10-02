@@ -16,9 +16,19 @@ RUNS = """<pre><a href="../">../</a>
 <a href="2026-09-15T18%3A00/">2026-09-15T18:00/</a>    15-Sep-2026 20:38:28    -
 </pre>"""
 
+# The parameter listing a probe is chosen from.
+PARAMETER_LISTING = """<pre><a href="../">../</a>
+<a href="T/">T/</a>          21-Aug-2026 12:06:22    -
+<a href="T_2M/">T_2M/</a>    21-Aug-2026 12:06:25    -
+</pre>"""
+
 # What .../p/<NAME>/ looks like: just r/ for a 2-D field, lvt1/ for a 3-D one.
 PLAIN_PARAMETER = """<pre><a href="../">../</a>
 <a href="r/">r/</a>    18-Sep-2026 11:56:47    -
+</pre>"""
+
+NO_PROBE_PARAMETERS = """<pre><a href="../">../</a>
+<a href="SOMETHING_ELSE/">SOMETHING_ELSE/</a>    21-Aug-2026 12:06:22    -
 </pre>"""
 
 MULTI_LEVEL_PARAMETER = """<pre><a href="../">../</a>
@@ -107,9 +117,25 @@ def test_runs_are_parsed_as_utc_and_ordered_oldest_first():
     assert http.paths[-1] == "weather/nwp/v1/m/icon-eu/p/T_2M/r/"
 
 
-def test_runs_without_a_parameter_says_so():
-    with pytest.raises(NotImplementedError, match="parameter"):
-        OpenDataCatalogue(FakeHttp(RUNS)).runs("icon-eu")
+def test_runs_picks_a_parameter_when_none_is_named():
+    """Runs sit below a parameter, so one has to be chosen. It must be 2-D:
+    a 3-D field keeps its runs below lvt1/lv1."""
+    http = ScriptedHttp(
+        {
+            "m/icon-eu/p/": PARAMETER_LISTING,
+            "m/icon-eu/p/T_2M/r/": RUNS,
+        }
+    )
+    assert OpenDataCatalogue(http).runs("icon-eu") == [
+        Run.coerce("2026-09-15T18:00"),
+        Run.coerce("2026-09-16T00:00"),
+    ]
+
+
+def test_runs_says_so_when_no_probe_parameter_exists():
+    http = ScriptedHttp({"m/weird/p/": NO_PROBE_PARAMETERS})
+    with pytest.raises(CatalogueUnavailableError, match="T_2M"):
+        OpenDataCatalogue(http).runs("weird")
 
 
 def test_assets_are_built_from_the_step_listing():

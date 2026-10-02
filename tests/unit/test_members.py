@@ -10,6 +10,8 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
+from test_download import asset as dl_asset
+from test_download import build
 
 from dwdopen.exceptions import InvalidSelectorError
 from dwdopen.nwp.query import _select_members
@@ -158,3 +160,49 @@ def test_a_deterministic_plan_has_no_member_field_in_the_name():
 def test_the_repr_reports_members():
     assert "3 members" in repr(plan([asset(m) for m in (1, 2, 3)]))
     assert "member 2" in repr(plan([asset(2)]))
+
+
+# --- grouped combine modes ------------------------------------------------
+
+def _plan_with_downloader(assets, downloader):
+    from dataclasses import replace as dc_replace
+
+    return dc_replace(plan(assets), downloader=downloader)
+
+
+def test_combine_parameter_writes_one_file_per_parameter(tmp_path):
+    """Same grouping machinery as combine="member", keyed differently."""
+
+    assets = [
+        dl_asset(name, hours, b"")
+        for name in ("T_2M", "PMSL")
+        for hours in (0, 3)
+    ]
+    downloader, http, _ = build(assets)
+    made = _plan_with_downloader(assets, downloader)
+
+    result = made.download(tmp_path, combine="parameter")
+
+    assert len(result.files) == 2
+    names = sorted(p.name for p in result.files)
+    assert "_PMSL_" in names[0]
+    assert "_T_2M_" in names[1]
+
+
+def test_combine_parameter_does_not_need_an_ensemble(tmp_path):
+    # Unlike combine="member", which has nothing to group by on a
+    # deterministic model.
+
+    assets = [dl_asset("T_2M", 0, b"")]
+    downloader, _, _ = build(assets)
+    made = _plan_with_downloader(assets, downloader)
+    assert len(made.download(tmp_path, combine="parameter").files) == 1
+
+
+def test_combine_member_still_refuses_a_deterministic_plan(tmp_path):
+
+    assets = [dl_asset("T_2M", 0, b"")]
+    downloader, _, _ = build(assets)
+    made = _plan_with_downloader(assets, downloader)
+    with pytest.raises(InvalidSelectorError, match="ensemble"):
+        made.download(tmp_path, combine="member")

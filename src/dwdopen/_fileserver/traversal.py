@@ -32,6 +32,14 @@ GRIB_SUFFIX = ".grib2"
 #   m/<model>/p/<param>[/wvl1/<nm>][/lvt1/<type>/lv1/<value>]
 #   /r/<run>[/e/<member>]/s/<step>.grib2
 
+PROBE_PARAMETERS = ("T_2M", "PS")
+"""Parameters used to read the available runs if the caller doesn't name a
+parameter. The available runs cannot be read just given a model, as the runs
+are listed not for each model, but for each parameter. So we need some
+"probing" parameters. The parameters above are available on all models DWD
+currently offers (Oct 26).
+"""
+
 MODEL_KEY = "m"
 """The forecast model, for example icon-eu."""
 
@@ -103,18 +111,29 @@ class OpenDataCatalogue:
         runs, but one has to be named.
 
         A run can appear here while it is still being published.
-        TODO think about just picking any available param name and level?
         """
         if parameter is None:
-            raise NotImplementedError(
-                "picking a parameter automatically is not implemented yet. "
-                "pass parameter=... explicitly"
-            )
+            parameter = self._probe_parameter(model)
         run_entries = self._run_entries(
             self._above_run(model, parameter, level_type, level)
         )
         runs = [Run.coerce(entry.name) for entry in run_entries]
         return sorted(runs)
+
+    def _probe_parameter(self, model: str) -> str:
+        """A parameter to read the available runs from.
+        Has to be a 2-D field: a 3-D field stores available runs also below
+        the level type and level, which would mean choosing a level as well.
+        """
+        available = self.parameters(model)
+        for name in PROBE_PARAMETERS:
+            if name in available:
+                return name
+        raise CatalogueUnavailableError(
+            f"none of {', '.join(PROBE_PARAMETERS)} exists in {model!r}, so no "
+            f"parameter could be picked to read the runs from. Pass "
+            f"parameter=... naming a 2-D field of this model"
+        )
 
     def _above_run(
         self,

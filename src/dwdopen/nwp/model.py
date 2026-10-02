@@ -136,6 +136,8 @@ class Model:
         specific selection.
         TODO should this be in the interface -> needs levels etc?
         """
+        if parameter is not None:
+            parameter = self._resolve_parameter(parameter)
         return self._catalogue.runs(self._name, parameter=parameter)
 
     def latest_run(self, *, parameter: str | None = None) -> Run:

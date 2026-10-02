@@ -124,6 +124,7 @@ A plan never switches to a newer run later, so what you inspected is what you ge
 ```python
 query.download("forecast.grib2")                    # one combined file
 query.download("members/", combine="member")        # one file per ensemble member
+query.download("params/", combine="parameter")      # one file per parameter
 query.download("forecast/", combine="none")         # one file per message
 query.download("f.grib2", temp_dir="/scratch")      # partial downloads before combining elsewhere
 ```
@@ -162,13 +163,10 @@ and want to use that logger, call `set_log_level(None)`. That will uninstall the
 
 ## Not yet implemented
 
-- [ ] `combine="parameter"`.
 - [ ] Listing cache. Every call re-reads the catalogue today.
 - [ ] Feedback of download progress (bar, text, visual?)
 - [ ] ICON-ART wavelengths (the `wvl1` segment).
 - [ ] A command-line interface.
-- [ ] Automatic parameter choice for `Model.latest_run()`, which needs
-      `parameter=` at the moment.
 
 ## License
 
