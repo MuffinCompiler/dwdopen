@@ -243,3 +243,68 @@ def test_a_parameter_that_does_have_the_level_type_is_accepted():
     model = model_with({"U": [PRESSURE, MODEL], "V": [PRESSURE, MODEL]})
     query = model.select(parameters=["U", "V"], level_type="pressure", levels=[850])
     assert query._level_type is PRESSURE
+
+
+def test_partial_warns_about_what_is_missing(caplog):
+    """Dropping part of what was asked for is worth saying out loud.
+
+    AICON is the real case: PMSL and TOT_PREC have no +0h step, so a request
+    naming 0h silently returned less than asked for.
+    """
+    import logging
+    from datetime import timedelta
+
+    from dwdopen.nwp.query import Query
+    from dwdopen.nwp.request import Asset
+    from dwdopen.nwp.run import Run
+
+    run = Run.coerce("2026-10-07T00:00")
+
+    class Catalogue:
+        def parameters(self, model):
+            return ["PMSL"]
+
+        def level_types(self, model, parameter):
+            return []
+
+        def members(self, model, parameter, run, *, level_type=None, level=None):
+            return []
+
+        def assets(self, model, parameter, run, **kw):
+            # Only +3h exists, as on the real server.
+            return [
+                Asset(
+                    keys=(("m", "aicon"), ("p", "PMSL")),
+                    run=run,
+                    step=timedelta(hours=3),
+                    path="x",
+                    size=10,
+                )
+            ]
+
+    query = Query(Catalogue(), "aicon", parameters=("PMSL",), steps=["0h", "3h"])
+
+    with caplog.at_level(logging.WARNING, logger="dwdopen"):
+        plan = query.resolve(run=run, require="partial")
+
+    assert len(plan.missing) == 1
+    assert "PMSL 0h" in caplog.text
+    assert "partial" in caplog.text
+
+
+def test_an_open_selector_can_never_report_anything_missing():
+    """"all" and Between ask for whatever exists, so there is no expectation
+    to fall short of. Nothing can be named as missing."""
+    from datetime import timedelta
+
+    from dwdopen.nwp.query import _select_steps
+    from dwdopen.nwp.request import Asset
+    from dwdopen.nwp.run import Run
+
+    available = [
+        Asset(keys=(("p", "PMSL"),), run=Run.coerce("2026-10-07T00:00"),
+              step=timedelta(hours=3), path="x")
+    ]
+    for selector in ("all", Between("0h", "6h")):
+        _, absent = _select_steps(available, selector)
+        assert absent == []

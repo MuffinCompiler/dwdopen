@@ -43,6 +43,7 @@ def set_log_level(level: int | None = logging.INFO) -> None:
     if level is None:
         logger.removeHandler(_handler)
         logger.setLevel(logging.NOTSET)
+        logger.propagate = True
         return
 
     # Add the handler to the dwdopen logger only.
@@ -50,6 +51,10 @@ def set_log_level(level: int | None = logging.INFO) -> None:
         logger.addHandler(_handler)
 
     logger.setLevel(level)
+    # Ours alone. Without this, any application that configures the root
+    # logger sees every dwdopen line twice: once from this handler and once
+    # through propagation.
+    logger.propagate = False
 
 # Setup default logging.
 set_log_level()

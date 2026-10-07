@@ -443,3 +443,25 @@ def test_setting_the_level_twice_does_not_duplicate_the_handler():
     dwdopen.set_log_level()
     dwdopen.set_log_level()
     assert logging.getLogger("dwdopen").handlers.count(dwdopen._handler) == 1
+
+
+def test_an_application_configuring_root_does_not_see_doubles():
+    """A bare logging.info() adds a root handler by itself.
+
+    With propagation left on, every dwdopen line then printed twice: once
+    from our handler and once through the root one.
+    """
+    import logging
+
+    import dwdopen
+
+    dwdopen.set_log_level()
+    assert logging.getLogger("dwdopen").propagate is False
+
+    dwdopen.set_log_level(None)
+    try:
+        # Handing logging back has to restore propagation, or an application's
+        # own handlers would never see the records.
+        assert logging.getLogger("dwdopen").propagate is True
+    finally:
+        dwdopen.set_log_level()

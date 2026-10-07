@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
@@ -35,6 +36,8 @@ from dwdopen.nwp.selectors import (
     StepScalar,
     StepSelector,
 )
+
+logger = logging.getLogger("dwdopen")
 
 __all__ = ["Query"]
 
@@ -163,15 +166,18 @@ class Query:
             assets.extend(wanted)
             missing.extend(MissingStep(parameter, step) for step in absent)
 
-        # If missing but required complete, raise an error.
-        if missing and require == "complete":
+        if missing:
             shown = ", ".join(
                 f"{item.parameter} {format_duration(item.step)}" for item in missing[:5]
             )
-            raise IncompleteRunError(
+            detail = (
                 f"run {resolved_run} is missing {len(missing)} requested step(s): "
                 f"{shown}{' ...' if len(missing) > 5 else ''}"
             )
+            if require == "complete":
+                raise IncompleteRunError(detail)
+            # Warn the user in "partial" mode what is missing from the request.
+            logger.warning("%s. Continuing, require=\"partial\"", detail)
 
         return ResolvedRequest(
             run=resolved_run,

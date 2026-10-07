@@ -2,6 +2,12 @@
 
 Versions follow [semantic versioning](https://semver.org/).
 
+## 0.3.1
+
+- `require="partial"` now warns which steps were missing instead of dropping them
+   silently.
+- Fixed every log line appearing twice once an application configured the root logger.
+
 ## 0.3.0
 
 - `combine="parameter"` implemented which writes one file per parameter. Refactored
