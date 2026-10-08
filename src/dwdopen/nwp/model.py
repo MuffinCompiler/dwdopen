@@ -134,11 +134,11 @@ class Model:
         keeps 8 runs (~24 h), ICON-D2-RUC 32.
         Use Query.latest_run when you need a run that actually satisfies a
         specific selection.
-        TODO should this be in the interface -> needs levels etc?
         """
         if parameter is not None:
             parameter = self._resolve_parameter(parameter)
-        return self._catalogue.runs(self._name, parameter=parameter)
+        with self._catalogue.snapshot():
+            return self._catalogue.runs(self._name, parameter=parameter)
 
     def latest_run(self, *, parameter: str | None = None) -> Run:
         """Newest run visible for this model. Same issues as runs().

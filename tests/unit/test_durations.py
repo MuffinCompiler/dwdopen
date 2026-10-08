@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from datetime import timedelta
 
 import pytest
@@ -123,6 +124,10 @@ def test_a_bad_step_fails_at_select_without_touching_the_network():
     from dwdopen.client import NWP
 
     class Catalogue:
+        def snapshot(self):
+            """Availability caching is the real catalogue's business."""
+            return nullcontext()
+
         def models(self):
             return ["icon"]
 

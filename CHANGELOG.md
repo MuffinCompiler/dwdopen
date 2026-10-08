@@ -2,6 +2,19 @@
 
 Versions follow [semantic versioning](https://semver.org/).
 
+## 0.4.0
+
+- Implemented a two-level cache: Everything above the runs `r/` describes the structure
+   of a model (parameters, levels...). These only change when DWD changes a model, so
+   the cached structural state can be kept for the life of the catalogue. Everything
+   else (runs, steps) can change on the server every minute, as runs are constantly
+   published and deleted. These are kept no longer than the operation that reads it.
+- One `resolve()` now sees one consistent view of the server instead of re-reading
+   the listing between parameters, as a run could appear or expire halfway.
+- This should reduce the number of http calls to resolve a request drastically.
+- `Catalogue` implementations gain a `snapshot()` method, which returns a "handle" to
+   the cache.
+
 ## 0.3.1
 
 - `require="partial"` now warns which steps were missing instead of dropping them

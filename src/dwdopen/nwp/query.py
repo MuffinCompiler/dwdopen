@@ -101,6 +101,13 @@ class Query:
         that has all the files requested in the query available. The data on the
         server must be "settled". Thus, a run still being published is skipped, so
         this is not the same as Model.latest_run.
+        Uses the cached snapshot and calls the internal implementation.
+        """
+        with self._catalogue.snapshot():
+            return self._newest_run(require, settle)
+
+    def _newest_run(self, require: Require, settle: timedelta) -> Run:
+        """The newest run satisfying the query, inside a caller's snapshot.
         """
         first = self._parameters[0]
         probe_levels = self._wanted_levels(first)
@@ -142,7 +149,12 @@ class Query:
         When require="complete" is set, any missing time step raises
         IncompleteRunError. With "partial" it is reported in the missing field
         instead. Open selectors such as Between() can never be incomplete.
+        Uses the cached snapshot and calls the helper method.
         """
+        with self._catalogue.snapshot():
+            return self._against(run, require)
+
+    def _against(self, run: RunLike | None, require: Require) -> ResolvedRequest:
         if run is None:
             resolved_run = self.latest_run(require=require)
         else:
@@ -151,6 +163,7 @@ class Query:
         assets: list[Asset] = []
         missing: list[MissingStep] = []
         # Get the assets for every parameter.
+        # TODO: may be worth to parallelize
         for parameter in self._parameters:
             available = self._catalogue.assets(
                 self._model,
@@ -202,6 +215,7 @@ class Query:
         """Which ensemble members to fetch, None for a deterministic model.
         Needs the run, because members are below it.
         """
+        # TODO: may be worth to parallelize
         # Any level will do: every level of a parameter shares its members.
         levels = self._wanted_levels(parameter)
         available = self._catalogue.members(

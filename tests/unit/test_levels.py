@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from decimal import Decimal
 
 import pytest
@@ -93,6 +94,10 @@ def test_soil_levels_match_on_their_exact_decimal():
 # --- choosing the level type ----------------------------------------------
 
 class FakeCatalogue:
+    def snapshot(self):
+        """Availability caching is the real catalogue's business."""
+        return nullcontext()
+
     """Just enough catalogue to exercise level-type resolution."""
 
     def __init__(self, types: dict[str, list[LevelType]]) -> None:
@@ -261,6 +266,10 @@ def test_partial_warns_about_what_is_missing(caplog):
     run = Run.coerce("2026-10-07T00:00")
 
     class Catalogue:
+        def snapshot(self):
+            """Availability caching is the real catalogue's business."""
+            return nullcontext()
+
         def parameters(self, model):
             return ["PMSL"]
 

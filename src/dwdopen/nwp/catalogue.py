@@ -6,6 +6,7 @@ Contains the methods that provide availability information.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from contextlib import AbstractContextManager
 from decimal import Decimal
 from typing import Protocol
 
@@ -113,10 +114,15 @@ class Catalogue(Protocol):
         """
         ...
 
+    def snapshot(self) -> AbstractContextManager[None]:
+        """Creates a snapshot of the catalogue, initializing caches if caching
+        is supported by the implementation. The caches should be kept alive
+        as long as the snapshot is held by one or more consumers.
+        """
+        ...
+
     def refresh(self) -> None:
         """Drop cached state so the next call re-builds from the server.
-
-        TODO caching
         """
         ...
 

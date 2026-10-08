@@ -1,15 +1,16 @@
 """Catalogue built by lazy traversal of the Open Data directory tree.
 
 One implementation of the Catalogue protocol.
-TODO add caching
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import AbstractContextManager
 from decimal import Decimal
 
+from dwdopen._fileserver.cache import ListingCache
 from dwdopen._fileserver.http import HttpClient
 from dwdopen._fileserver.listing import ListingEntry, parse_listing
 from dwdopen._fileserver.paths import Segment, build_path
@@ -78,6 +79,25 @@ class OpenDataCatalogue:
     def __init__(self, http: HttpClient, *, max_workers: int = 16) -> None:
         self._http = http
         self._max_workers = max_workers
+        self._cache = ListingCache()
+
+    def snapshot(self) -> AbstractContextManager[None]:
+        """See Catalogue.snapshot."""
+        return self._cache.snapshot()
+
+    def _entries(self, path: str) -> list[ListingEntry]:
+        """The parsed listing of one directory, cached.
+        """
+        # Check which cache we are in: runs/steps are volatile, everything
+        # above is structural and therefore not volatile.
+        volatile = RUN_KEY in path.strip("/").split("/")
+        cached = self._cache.get(path, volatile=volatile)
+        if cached is not None:
+            return cached
+
+        entries = parse_listing(self._http.get_listing(path))
+        self._cache.put(path, entries, volatile=volatile)
+        return entries
 
     def models(self) -> list[str]:
         """Model names currently visible, sorted."""
@@ -265,14 +285,14 @@ class OpenDataCatalogue:
 
         # Get the listing of all available steps.
         try:
-            listing = self._http.get_listing(build_path(*below_run, key=STEP_KEY))
+            entries = self._entries(build_path(*below_run, key=STEP_KEY))
         except CatalogueUnavailableError:
             self._explain_unreachable(*below_run, expected=STEP_KEY)
             raise
 
         assets = []
         # Parse entries. Each entry is one GRIB file, thus one asset.
-        for entry in parse_listing(listing):
+        for entry in entries:
             if entry.is_dir:
                 continue
             keys = (*below_run, (STEP_KEY, entry.name))
@@ -396,7 +416,7 @@ class OpenDataCatalogue:
         )
 
     def refresh(self) -> None:
-        """TODO after caching"""
+        self._cache.clear()
 
     def close(self) -> None:
         self._http.close()
@@ -410,10 +430,7 @@ class OpenDataCatalogue:
         """
         path = build_path(*segments, key=key)
         # Get the list of entries on that page that are directories.
-        entries = []
-        for entry in parse_listing(self._http.get_listing(path)):
-            if entry.is_dir:
-                entries.append(entry)
+        entries = [entry for entry in self._entries(path) if entry.is_dir]
 
         if not entries:
             raise CatalogueUnavailableError(

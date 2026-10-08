@@ -1,6 +1,8 @@
 """Names are matched ignoring case.
 """
 
+from contextlib import nullcontext
+
 import pytest
 
 from dwdopen.exceptions import (
@@ -40,6 +42,10 @@ def test_resolution_is_not_fuzzy():
 # --- through the client ---------------------------------------------------
 
 class FakeCatalogue:
+    def snapshot(self):
+        """Availability caching is the real catalogue's business."""
+        return nullcontext()
+
     def models(self):
         return ["icon-eu", "icon-d2"]
 
