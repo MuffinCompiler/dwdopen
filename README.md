@@ -4,8 +4,8 @@ Python library to access [DWD Open Data](https://opendata.dwd.de/) numerical wea
 prediction (NWP) data: discover what data is currently offered, define what you want,
 and download it.
 
-> Still in "pre-alpha", not everything works yet.
-> See [Not yet implemented](#not-yet-implemented).
+> Still in alpha, not everything works yet and the API may change before 1.0.
+> See the [Roadmap](#roadmap).
 
 ## Install
 
@@ -135,7 +135,7 @@ generated automatically.
 
 ```python
 plan = query.resolve()
-plan.suggested_name()            # 'icon-eu_2026-09-24T0600_PMSL+T_2M_0h-24h.grib2'
+plan.suggested_name()            # 'icon-eu_2026-09-24T0600_PMSL+T_2M_single_0h-24h_2801ebe5.grib2'
 plan.download("/home/weather/")   # writes that name into the directory
 ```
 
@@ -145,9 +145,19 @@ directory at once. Already downloaded files are skipped.
 `DownloadResult.assets_skipped` says how many were already there, which is worth
 checking in a scheduled job.
 
+## Caching
+
+Directory listings are cached to keep the number of requests to the server low.
+The structure of a model (parameters, level types, levels) is kept for the
+lifetime of the `DWD` client, as it only changes when DWD changes the model. Runs and
+steps change constantly as runs are published and deleted, so they are re-read on
+every call. One `resolve()` sees one consistent view of the server.
+
+If DWD changes a model while your client is running, `dwd.refresh()` drops the cache.
+
 ## Logging
 
-The library logs through the `dwdopen` logger. You can change the logging level via::
+The library logs through the `dwdopen` logger. You can change the logging level via:
 
 ```python
 import logging, dwdopen
@@ -161,12 +171,27 @@ The handler is connected to the `dwdopen` logger. It will not override
 the logging your application sets up for itself. If you do configure your own logger
 and want to use that logger, call `set_log_level(None)`. That will uninstall the handler.
 
-## Not yet implemented
+## Roadmap
 
-- [ ] Listing cache. Every call re-reads the catalogue today.
+### 1.0
+
 - [ ] Feedback of download progress (bar, text, visual?)
 - [ ] ICON-ART wavelengths (the `wvl1` segment).
+
+### After 1.0
+
 - [ ] A command-line interface.
+
+### Long term
+
+The goal is a complete Python interface to DWD Open Data:
+
+- [ ] Observations: station data (`/weather/weather_reports`)
+- [ ] Radar: composites and single-site products (`weather/radar`).
+- [ ] Point forecasts: MOSMIX (`weather/local_forecasts`).
+- [ ] Weather warnings (`weather/alerts`).
+- [ ] Satellite products (`weather/satellite`).
+- [ ] Current station reports (`weather/weather_reports`).
 
 ## License
 
