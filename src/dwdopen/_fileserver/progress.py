@@ -27,7 +27,8 @@ class Progress:
     ━━━━━━━━━━━━━━━━╸━━━━━━━━━━━  57%  312/546 files  2.3 GB/4.0 GB  48.2 MB/s  ETA 0:36
 
     Otherwise, e.g. in a cron job, the same numbers are logged every 10 seconds.
-    The download threads report a file (and size) has finished, so the progress bar can advance.
+    The download threads report each finished file and its size, so the bar
+    can advance.
     Use it as a context manager around the download.
     """
 
