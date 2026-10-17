@@ -145,6 +145,18 @@ directory at once. Already downloaded files are skipped.
 `DownloadResult.assets_skipped` says how many were already there, which is worth
 checking in a scheduled job.
 
+### Progress
+
+On a terminal or in Jupyter a download shows one line:
+
+```
+━━━━━━━━━━━━━━━━╸━━━━━━━━━━━  57%  312/546 files  2.3 GB/4.0 GB  48.2 MB/s  ETA 0:36
+```
+
+When nobody watches the output (e.g., output redirected to a file),
+the same numbers are logged every 10 seconds instead. `DWD(progress=False)`
+turns progress off.
+
 ## Caching
 
 Directory listings are cached to keep the number of requests to the server low.
@@ -175,7 +187,7 @@ and want to use that logger, call `set_log_level(None)`. That will uninstall the
 
 ### 1.0
 
-- [ ] Feedback of download progress (bar, text, visual?)
+- [x] Feedback of download progress.
 - [ ] ICON-ART wavelengths (the `wvl1` segment).
 
 ### After 1.0

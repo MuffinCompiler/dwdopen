@@ -68,7 +68,8 @@ def build(assets, failures=None):
     sized = [replace(a, size=len(payloads[a.path])) for a in assets]
     assets[:] = sized
     http = FakeHttp(payloads, failures)
-    return HttpDownloader(http, max_workers=4, backoff=0.0), http, payloads
+    downloader = HttpDownloader(http, max_workers=4, backoff=0.0, progress=False)
+    return downloader, http, payloads
 
 
 # --- naming ---------------------------------------------------------------

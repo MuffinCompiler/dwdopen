@@ -2,6 +2,12 @@
 
 Versions follow [semantic versioning](https://semver.org/).
 
+## 0.4.1
+
+- Downloads show their progress as a bar with download progress, bytes to
+   transfer, the transfer rate and ETA. `DWD(progress=False)` turns it off.
+- The final "saved" log line now includes the duration and the average rate.
+
 ## 0.4.0
 
 - Implemented a two-level cache: Everything above the runs `r/` describes the structure

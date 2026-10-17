@@ -13,6 +13,7 @@ from pathlib import Path
 
 from dwdopen._fileserver.http import HttpClient
 from dwdopen._fileserver.naming import already_complete, local_name, temp_name
+from dwdopen._fileserver.progress import Progress, format_seconds
 from dwdopen.exceptions import DownloadError
 from dwdopen.nwp.request import Asset, CombineMode, Fetched, human_size
 from dwdopen.nwp.selectors import LevelType
@@ -41,7 +42,8 @@ class HttpDownloader:
         *,
         max_workers: int = 16,
         max_attempts: int = 4,
-        backoff: float = 0.5
+        backoff: float = 0.5,
+        progress: bool = True,
     ) -> None:
         """
         max_workers
@@ -50,11 +52,15 @@ class HttpDownloader:
             Attempts per asset for a failure.
         backoff
             Seconds before the second attempt; doubles each further attempt.
+        progress
+            Show the progress of a download: a line updated on a terminal,
+            a log line every few seconds otherwise.
         """
         self._http = http
         self._max_workers = max_workers
         self._max_attempts = max_attempts
         self._backoff = backoff
+        self._progress = progress
 
     def fetch(
         self,
@@ -72,12 +78,13 @@ class HttpDownloader:
             logger.info("nothing to download")
             return Fetched(files=(), bytes_downloaded=0)
 
+        started = time.monotonic()
         self._announce(assets, destination, combine)
         if combine == "none":
             fetched = self._fetch_separately(assets, destination, temp_dir)
         else:
             fetched = self._fetch_combined(assets, destination, temp_dir)
-        self._report(fetched, combine)
+        self._report(fetched, combine, time.monotonic() - started)
         return fetched
 
     def _fetch_separately(
@@ -142,20 +149,29 @@ class HttpDownloader:
         # Num workers: As specified, or number of assets to get.
         workers = max(1, min(self._max_workers, len(assets)))
 
-        def fetch(asset: Asset, target: Path) -> int:
-            return self._fetch_one(asset, target, staging)
+        asset_sizes = [asset.size for asset in assets if asset.size is not None]
+        total = sum(asset_sizes) if len(asset_sizes) == len(assets) else None
+        # Create a new Progress object, which is initialized with the amount of assets
+        # and size to download, and will be updated continuously.
+        progress = Progress(len(assets), total, show=self._progress)
 
-        with ThreadPoolExecutor(max_workers=workers) as pool:
+        def fetch(asset: Asset, target: Path) -> int:
+            return self._fetch_one(asset, target, staging, progress)
+
+        with progress, ThreadPoolExecutor(max_workers=workers) as pool:
             # Returns list of download sizes for the assets.
             return list(pool.map(fetch, assets, targets))
 
-    def _fetch_one(self, asset: Asset, target: Path, staging: Path) -> int:
+    def _fetch_one(
+        self, asset: Asset, target: Path, staging: Path, progress: Progress
+    ) -> int:
         """Fetch one asset, write it to the specified target.
         Returns the bytes transferred, so zero means the file was already there
         and nothing had to be fetched.
         """
         if already_complete(target, asset.size):
             logger.debug("skipping %s, already downloaded", target)
+            progress.file_skipped(asset.size)
             return 0
 
         # Write into a partial/staging directory instead of the target path.
@@ -166,6 +182,8 @@ class HttpDownloader:
         partial = staging / temp_name(target.name)
         partial.write_bytes(payload)
         os.replace(partial, target)
+        progress.add_bytes(len(payload))
+        progress.file_done()
         logger.debug("wrote %s (%d bytes)", target, len(payload))
         return len(payload)
 
@@ -224,10 +242,13 @@ class HttpDownloader:
             self._warn_about_mixed_level_types(assets)
 
     @staticmethod
-    def _report(fetched: Fetched, combine: CombineMode) -> None:
-        """Report the finished download.
+    def _report(fetched: Fetched, combine: CombineMode, seconds: float) -> None:
+        """Report the finished download, with its duration and average rate.
         """
         size = human_size(fetched.bytes_downloaded)
+        if fetched.bytes_downloaded and seconds > 0:
+            rate = human_size(int(fetched.bytes_downloaded / seconds))
+            size += f" in {format_seconds(seconds)}, {rate}/s"
         if fetched.skipped:
             size += f", {fetched.skipped} already downloaded"
         if combine == "none":

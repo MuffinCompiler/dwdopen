@@ -81,6 +81,7 @@ class DWD:
             base_url: str = DEFAULT_BASE_URL,
             timeout: float = 30.0,
             max_connections: int = 16,
+            progress: bool = True,
             catalogue: Catalogue | None = None,
             downloader: Downloader | None = None,
     ) -> None:
@@ -92,6 +93,9 @@ class DWD:
         max_connections
             Upper bound on concurrent requests. Can be a throughput knob as we
             enumerate and download thousands of files possibly.
+        progress
+            Show the progress of downloads: a line updating in place on a
+            terminal or in a Jupyter env, otherwise log lines.
         catalogue
             The implementation of the OpenData catalogue.
         downloader
@@ -100,6 +104,7 @@ class DWD:
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
         self._max_connections = max_connections
+        self._progress = progress
         self._catalogue = catalogue
         self._downloader = downloader
         self._http: HttpClient | None = None
@@ -133,7 +138,9 @@ class DWD:
     def _ensure_downloader(self) -> Downloader:
         if self._downloader is None:
             self._downloader = HttpDownloader(
-                self._ensure_http(), max_workers=self._max_connections
+                self._ensure_http(),
+                max_workers=self._max_connections,
+                progress=self._progress,
             )
         return self._downloader
 
