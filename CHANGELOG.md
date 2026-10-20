@@ -2,6 +2,15 @@
 
 Versions follow [semantic versioning](https://semver.org/).
 
+## 0.4.2
+
+- `require="complete"` now checks every requested level and member. Before, a step
+   counted as present as soon as one level had it, so a run DWD was still publishing
+   could be accepted with fields missing. A step that some levels or members have and
+   others lack is now also reported for `steps="all"` and `Between()`.
+- Directory listings are tried up to 3 times when the server times out, drops the
+   connection or answers with 429/5xx. A 404 is not retried.
+
 ## 0.4.1
 
 - Downloads show their progress as a bar with download progress, bytes to

@@ -119,6 +119,22 @@ plan.download("u.grib2")
 
 A plan never switches to a newer run later, so what you inspected is what you get.
 
+### Complete runs
+
+DWD publishes a run step by step over a few hours. By default (`require="complete"`)
+`resolve()` and `download()` raise `IncompleteRunError` unless every requested step
+exists on every requested level and member. `require="partial"` takes what is there
+and lists the rest in `plan.missing`.
+
+What "every requested step" means depends on how the steps are selected:
+
+- Named steps (`Every("0h", "180h", "3h")`, a list, a single step) are checked exactly.
+- `"all"` and `Between()` mean "what DWD has published so far". The server offers no
+  list of the steps a run will have, so dwdopen can only notice a step that some levels
+  or members have and others lack.
+
+To be sure a run is complete, name the steps.
+
 ## Downloading
 
 ```python
