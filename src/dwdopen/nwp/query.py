@@ -146,9 +146,14 @@ class Query:
 
         Omitting ``run`` resolves against the newest run that satisfies the
         query, given by latest_run().
-        When require="complete" is set, any missing time step raises
-        IncompleteRunError. With "partial" it is reported in the missing field
-        instead. Open selectors such as Between() can never be incomplete.
+        When require="complete" is set, a step missing on any requested level
+        or member raises IncompleteRunError. With "partial" it is reported in
+        the missing field instead.
+        Named steps (Every, a list) are expected exactly. For "all" and
+        Between(), we have to make a guess as the server does not list what steps
+        are expected in a full forecast. Thus, we check whether a step is only
+        available on SOME levels or members. Raise IncompleteRunError when that
+        is the case.
         Uses the cached snapshot and calls the helper method.
         """
         with self._catalogue.snapshot():
@@ -162,31 +167,36 @@ class Query:
 
         assets: list[Asset] = []
         missing: list[MissingStep] = []
+        # How many levels and members each parameter has.
+        sizes: dict[str, tuple[int, int]] = {}
         # Get the assets for every parameter.
         # TODO: may be worth to parallelize
         for parameter in self._parameters:
+            levels = self._wanted_levels(parameter)
+            members = self._wanted_members(parameter, resolved_run)
+            # Get all available assets for the provided information.
             available = self._catalogue.assets(
                 self._model,
                 parameter,
                 resolved_run,
                 level_type=self._level_type,
-                levels=self._wanted_levels(parameter),
-                members=self._wanted_members(parameter, resolved_run),
+                levels=levels,
+                members=members,
             )
-            # Check which assets are wanted and absent from the available assets by
-            # checking the catalogue entries.
-            wanted, absent = _select_steps(available, self._steps)
-            assets.extend(wanted)
-            missing.extend(MissingStep(parameter, step) for step in absent)
+            # Get the subset of assets for the user's chosen steps.
+            chosen = _select_steps(available, self._steps)
+            assets.extend(chosen)
+            # Every requested level and member MUST have every expected step.
+            # Track missing assets for that invariant.
+            missing.extend(
+                _find_missing(
+                    parameter, chosen, _named_steps(self._steps), levels, members
+                )
+            )
+            sizes[parameter] = (len(levels or [None]), len(members or [None]))
 
         if missing:
-            shown = ", ".join(
-                f"{item.parameter} {format_duration(item.step)}" for item in missing[:5]
-            )
-            detail = (
-                f"run {resolved_run} is missing {len(missing)} requested step(s): "
-                f"{shown}{' ...' if len(missing) > 5 else ''}"
-            )
+            detail = _describe_missing(resolved_run, missing, sizes)
             if require == "complete":
                 raise IncompleteRunError(detail)
             # Warn the user in "partial" mode what is missing from the request.
@@ -359,42 +369,116 @@ def _still_publishing(
 
 def _select_steps(
     available: Sequence[Asset], selector: StepSelector | None
-) -> tuple[list[Asset], list[timedelta]]:
-    """Pick the assets a step selector asks for.
-    Only selectors that name specific forecast steps can have missing steps.
-    "all" and Between() ask for whatever exists, so they never report anything missing.
+) -> list[Asset]:
+    """Pick the assets a step selector asks for. Whether something is missing
+    is checked separately, in _find_missing().
     """
     if selector is None or selector == "all":
-        return list(available), []
-
-    by_step: dict[timedelta, list[Asset]] = {}
-    for asset in available:
-        by_step.setdefault(asset.step, []).append(asset)
+        return list(available)
 
     # Between: Check every assets time and put ones in chosen that are in the interval.
     if isinstance(selector, Between):
         start = None if selector.start is None else parse_duration(selector.start)
         stop = None if selector.stop is None else parse_duration(selector.stop)
-        chosen = [
+        return [
             asset
             for asset in available
             if (start is None or asset.step >= start)
             and (stop is None or asset.step <= stop)
         ]
-        return chosen, []
 
-    # Every or specific time deltas: Collect the wanted forecast steps.
+    # Every() or specific time deltas: keep the assets on the wanted steps.
+    wanted = _named_steps(selector)
+    assert wanted is not None
+    return [asset for asset in available if asset.step in wanted]
+
+
+def _named_steps(selector: StepSelector | None) -> list[timedelta] | None:
+    """The steps a selector names explicitly. None for "all" and Between(),
+    which ask for whatever exists.
+    """
+    if selector is None or selector == "all" or isinstance(selector, Between):
+        return None
     if isinstance(selector, Every):
-        wanted = _expand_every_step(selector)
-    elif isinstance(selector, (str, timedelta)):
-        wanted = [parse_duration(selector)]
-    else:
-        wanted = [parse_duration(item) for item in selector]
+        return _expand_every_step(selector)
+    if isinstance(selector, (str, timedelta)):
+        return [parse_duration(selector)]
+    return [parse_duration(item) for item in selector]
 
-    # Look whether the wanted steps are available in the assets.
-    found = [asset for step in wanted for asset in by_step.get(step, ())]
-    absent = [step for step in wanted if step not in by_step]
-    return found, absent
+
+def _find_missing(
+    parameter: str,
+    chosen: Sequence[Asset],
+    named_steps: list[timedelta] | None,
+    levels: Sequence[Decimal] | None,
+    members: Sequence[int] | None,
+) -> list[MissingStep]:
+    """Steps of one parameter that are absent on some or all of the requested
+    levels and members.
+
+    With named steps the expectation is exact: each of them, everywhere.
+    Without ("all", Between) the server gives no list of expected steps, so a
+    step that exists on one level or member is expected on all of them. A step
+    not yet published anywhere cannot be noticed then.
+    """
+    if named_steps is None:
+        expected = sorted({asset.step for asset in chosen})
+    else:
+        expected = list(named_steps)
+
+    present = {(asset.level, asset.member, asset.step) for asset in chosen}
+    wanted_levels: list[Decimal | None] = list(levels) if levels else [None]
+    wanted_members: list[int | None] = list(members) if members else [None]
+
+    missing: list[MissingStep] = []
+    for step in expected:
+        lacking = [
+            (level, member)
+            for level in wanted_levels
+            for member in wanted_members
+            if (level, member, step) not in present
+        ]
+        if len(lacking) == len(wanted_levels) * len(wanted_members):
+            # Everything is missing, just add a missing step without level and member.
+            missing.append(MissingStep(parameter, step))
+        else:
+            for level, member in lacking:
+                missing.append(MissingStep(parameter, step, level, member))
+    return missing
+
+
+def _describe_missing(
+    run: Run, missing: Sequence[MissingStep], sizes: dict[str, tuple[int, int]]
+) -> str:
+    """One line for the error or warning, grouped by parameter and step:
+    "W 180h (24 of 120 levels)", or just "T_2M 3h" when it is missing everywhere.
+    `sizes` holds the number of levels and members requested per parameter.
+    """
+    # Missing entries per (parameter, step). None means missing everywhere.
+    counts: dict[tuple[str, timedelta], int | None] = {}
+    for item in missing:
+        key = (item.parameter, item.step)
+        if item.level is None and item.member is None:
+            counts[key] = None
+        else:
+            counts[key] = (counts.get(key) or 0) + 1
+
+    parts = []
+    for (parameter, step), count in counts.items():
+        text = f"{parameter} {format_duration(step)}"
+        if count is not None:
+            levels, members = sizes[parameter]
+            if members == 1:
+                text += f" ({count} of {levels} levels)"
+            elif levels == 1:
+                text += f" ({count} of {members} members)"
+            else:
+                text += f" ({count} of {levels * members} level/member fields)"
+        parts.append(text)
+
+    shown = ", ".join(parts[:5])
+    more = " ..." if len(parts) > 5 else ""
+    return f"run {run} is missing {len(parts)} requested step(s): {shown}{more}"
 
 
 def _expand_every_step(selector: Every[StepScalar]) -> list[timedelta]:

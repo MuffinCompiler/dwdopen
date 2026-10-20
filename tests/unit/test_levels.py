@@ -180,11 +180,10 @@ def test_several_levels_of_one_step_all_survive_selection():
         for level in (60, 61, 62)
     ]
 
-    chosen, absent = _select_steps(assets, ["0h", "1h"])
+    chosen = _select_steps(assets, ["0h", "1h"])
     assert len(chosen) == 6
-    assert absent == []
 
-    chosen, _ = _select_steps(assets, "0h")
+    chosen = _select_steps(assets, "0h")
     assert [a.level for a in chosen] == [Decimal(60), Decimal(61), Decimal(62)]
 
 
@@ -301,12 +300,13 @@ def test_partial_warns_about_what_is_missing(caplog):
     assert "partial" in caplog.text
 
 
-def test_an_open_selector_can_never_report_anything_missing():
-    """"all" and Between ask for whatever exists, so there is no expectation
-    to fall short of. Nothing can be named as missing."""
+def test_an_open_selector_on_consistent_data_reports_nothing_missing():
+    """"all" and Between ask for whatever exists. Without holes between levels
+    or members there is nothing to fall short of. More in test_completeness.py.
+    """
     from datetime import timedelta
 
-    from dwdopen.nwp.query import _select_steps
+    from dwdopen.nwp.query import _find_missing, _named_steps, _select_steps
     from dwdopen.nwp.request import Asset
     from dwdopen.nwp.run import Run
 
@@ -315,5 +315,6 @@ def test_an_open_selector_can_never_report_anything_missing():
               step=timedelta(hours=3), path="x")
     ]
     for selector in ("all", Between("0h", "6h")):
-        _, absent = _select_steps(available, selector)
-        assert absent == []
+        chosen = _select_steps(available, selector)
+        assert _named_steps(selector) is None
+        assert _find_missing("PMSL", chosen, None, None, None) == []

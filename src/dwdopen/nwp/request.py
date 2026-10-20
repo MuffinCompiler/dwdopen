@@ -136,9 +136,14 @@ class Asset:
 
 @dataclass(frozen=True)
 class MissingStep:
-    """A step that was requested but is not in the run."""
+    """A step that was requested but is not in the run.
+    Level and member being None means step is missing on every level and member.
+    Otherwise it is missing only on the level and member given.
+    """
     parameter: str
     step: timedelta
+    level: Decimal | None = None
+    member: int | None = None
 
 
 @dataclass(frozen=True)
@@ -295,7 +300,9 @@ class ResolvedRequest:
         groups: dict[object, list[Asset]] = {}
         for asset in self.assets:
             group = asset.member if by_member else asset.parameter
-            groups.setdefault(group, []).append(asset)
+            if group not in groups:
+                groups[group] = []
+            groups[group].append(asset)
 
         # A directory, because every group needs its own name.
         folder = Path(destination)
