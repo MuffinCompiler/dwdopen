@@ -24,8 +24,8 @@ from dwdopen.nwp.selectors import (
     LevelType,
     LevelTypeLike,
     MemberSelector,
-    SelectorValue,
     StepSelector,
+    WavelengthSelector,
 )
 
 __all__ = ["Model", "ParameterInfo"]
@@ -45,10 +45,9 @@ class ParameterInfo:
     lvt1/lv1, which it does whenever a parameter has a single level.
     """
 
-    qualifiers: tuple[str, ...] = ()
-    """Extra path-segment keys seen for this parameter, e.g. ("wvl1",) for
-    ICON-ART's SAT_BSC_DUST. DWD documents none of these, so they are
-    discovered and kept."""
+    wavelengths: tuple[int, ...] = ()
+    """Wavelengths in nm, for example (532, 1064) for ICON-ART's
+    SAT_BSC_DUST. Empty for nearly every parameter."""
 
     def is_multi_level(self) -> bool:
         return bool(self.level_types)
@@ -96,10 +95,24 @@ class Model:
         members might have no definite answer.
         """
         name = self._resolve_parameter(name)
+        # Wavelengths (ICON-ART) are directly under parameter.
+        wavelengths = self._catalogue.wavelengths(self._name, name)
         return ParameterInfo(
             model=self._name,
             name=name,
-            level_types=tuple(self._catalogue.level_types(self._name, name)),
+            level_types=tuple(self._level_types(name)),
+            wavelengths=tuple(wavelengths),
+        )
+
+    def _level_types(self, parameter: str) -> list[LevelType]:
+        """The level types of a parameter. With wavelengths, they are below
+        each wavelength. Just pick the first wavelength then.
+        """
+        wavelengths = self._catalogue.wavelengths(self._name, parameter)
+        return self._catalogue.level_types(
+            self._name,
+            parameter,
+            wavelength=wavelengths[0] if wavelengths else None,
         )
 
     def _resolve_parameter(self, name: str) -> str:
@@ -121,8 +134,13 @@ class Model:
         """Level values this parameter is published on, in DWD's own unit.
         So Pa for pressure and metres for soil.
         """
+        name = self._resolve_parameter(parameter)
+        wavelengths = self._catalogue.wavelengths(self._name, name)
         return self._catalogue.levels(
-            self._name, self._resolve_parameter(parameter), LevelType.coerce(level_type)
+            self._name,
+            name,
+            LevelType.coerce(level_type),
+            wavelength=wavelengths[0] if wavelengths else None,
         )
 
     def runs(self, *, parameter: str | None = None) -> list[Run]:
@@ -160,7 +178,7 @@ class Model:
         level_type: LevelTypeLike | None = None,
         levels: LevelSelector | None = None,
         members: MemberSelector | None = None,
-        **selectors: SelectorValue,
+        wavelengths: WavelengthSelector | None = None,
     ) -> Query:
         """Describe what to retrieve.
         Parameter names are validated, so this does read the p/ listing.
@@ -173,14 +191,10 @@ class Model:
         level type.
         ``levels`` is in the readable unit: hPa for pressure, the bare index for
         model levels, metres for soil.
+        ``wavelengths`` (in nm) is only for the ICON-ART parameters that
+        have them, such as SAT_BSC_DUST. Leaving it out means all of them. Specifying
+        wavelengths on models/parameters without wavelengths raises an error.
         """
-        unsupported = dict(selectors)
-        given = sorted(name for name, value in unsupported.items() if value is not None)
-        if given:
-            raise NotImplementedError(
-                f"{', '.join(given)}: not supported yet. ICON-ART wavelengths TODO"
-            )
-
         # Validate steps before accessing the network.
         check_step_selector(steps)
 
@@ -189,6 +203,10 @@ class Model:
             raise InvalidSelectorError("select() needs at least one parameter")
 
         names = tuple(self._resolve_parameter(name) for name in names)
+
+        # Error out if wavelengths are given but not part of the model/parameter selection.
+        if wavelengths is not None:
+            self._require_wavelengths(names)
 
         chosen_type = self._resolve_level_type(names, level_type, levels)
         return Query(
@@ -199,8 +217,26 @@ class Model:
             level_type=chosen_type,
             levels=levels,
             members=members,
+            wavelengths=wavelengths,
             downloader=self._downloader,
         )
+
+    def _require_wavelengths(self, parameters: tuple[str, ...]) -> None:
+        """Raise InvalidSelectorError if wavelengths were given but a
+        parameter has none.
+        """
+        # Collect parameter names without wavelengths.
+        without = [
+            name
+            for name in parameters
+            if not self._catalogue.wavelengths(self._name, name)
+        ]
+        if without:
+            raise InvalidSelectorError(
+                f"wavelengths were given but {', '.join(without)} in "
+                f"{self._name!r} {'has' if len(without) == 1 else 'have'} none. "
+                f"Only a few ICON-ART parameters, such as SAT_BSC_DUST, do."
+            )
 
     def _resolve_level_type(
         self,
@@ -213,9 +249,7 @@ class Model:
         the level type is unambiguous. Every selected parameter must be available
         on the same level type, or on none at all.
         """
-        per_parameter = {
-            name: self._catalogue.level_types(self._name, name) for name in parameters
-        }
+        per_parameter = {name: self._level_types(name) for name in parameters}
 
         if level_type is not None:
             chosen = LevelType.coerce(level_type)

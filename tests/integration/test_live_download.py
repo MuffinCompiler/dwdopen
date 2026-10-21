@@ -178,3 +178,17 @@ def test_combine_member_needs_an_ensemble(tmp_path):
         query = dwd.nwp.model("icon-eu").select(parameters="T_2M", steps="0h")
         with pytest.raises(InvalidSelectorError, match="ensemble"):
             query.download(tmp_path / "out", combine="member")
+
+
+def test_an_icon_art_wavelength_lands_in_the_path(tmp_path):
+    with DWD() as dwd:
+        model = dwd.nwp.model("icon-art")
+        assert 532 in model.parameter("SAT_BSC_DUST").wavelengths
+        query = model.select(
+            parameters="SAT_BSC_DUST", levels=[90], steps="0h", wavelengths=532
+        )
+        result = query.download(tmp_path / "out", combine="none")
+
+    assert len(result.files) == 1
+    assert "_wvl1-532_" in result.files[0].name
+    assert grib_messages(result.files[0]) == 1

@@ -100,6 +100,19 @@ icon_d2.select(parameters="HSURF", steps="0h")                      # no level t
 icon_d2.select(parameters="HHL", level_type="model", levels="all")
 ```
 
+### ICON-ART wavelengths
+
+A few ICON-ART parameters, currently `SAT_BSC_DUST` and `CEIL_BSC_DUST`, are published
+per wavelength (532 and 1064 nm). Leaving `wavelengths` out for these parameters
+will download all of them. Specifying a wavelength that does not exist or for models and
+parameters not published on different wavelengths raises an error.
+
+```python
+art = dwd.nwp.model("icon-art")
+art.parameter("SAT_BSC_DUST").wavelengths                              # (532, 1064)
+art.select(parameters="SAT_BSC_DUST", levels=Between(100, 120), wavelengths=532)
+```
+
 ## Investigate before you download
 
 `resolve()` freezes a query against one run and hands back a plan you can inspect before
@@ -204,7 +217,7 @@ and want to use that logger, call `set_log_level(None)`. That will uninstall the
 ### 1.0
 
 - [x] Feedback of download progress.
-- [ ] ICON-ART wavelengths (the `wvl1` segment).
+- [x] ICON-ART wavelengths (the `wvl1` segment).
 
 ### After 1.0
 

@@ -2,6 +2,15 @@
 
 Versions follow [semantic versioning](https://semver.org/).
 
+## Unreleased
+
+- ICON-ART wavelengths: `SAT_BSC_DUST` and `CEIL_BSC_DUST`, which DWD publishes per
+   wavelength (the `wvl1` path segment), can now be selected. `select(wavelengths=532)`
+   picks one, leaving it out takes all. `Asset` and `MissingStep` carry the wavelength.
+- `ParameterInfo.qualifiers` (never filled) is replaced by `ParameterInfo.wavelengths`.
+- `select()` no longer accepts arbitrary extra keywords. An unknown keyword is now a
+   `TypeError` instead of `NotImplementedError`.
+
 ## 0.4.2
 
 - `require="complete"` now checks every requested level and member. Before, a step

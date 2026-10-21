@@ -32,14 +32,17 @@ class Catalogue:
     def snapshot(self):
         return nullcontext()
 
-    def levels(self, model, parameter, level_type):
+    def wavelengths(self, model, parameter):
+        return []
+
+    def levels(self, model, parameter, level_type, *, wavelength=None):
         return self.level_values
 
-    def members(self, model, parameter, run, *, level_type=None, level=None):
+    def members(self, model, parameter, run, **kw):
         return self.member_values
 
     def assets(self, model, parameter, run, *, level_type=None, levels=None,
-               members=None):
+               members=None, wavelength=None):
         return [
             Asset(
                 keys=(("p", parameter), ("l", str(level)), ("s", str(hours))),

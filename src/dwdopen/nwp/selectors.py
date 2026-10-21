@@ -19,9 +19,9 @@ __all__ = [
     "LevelType",
     "LevelTypeLike",
     "MemberSelector",
-    "SelectorValue",
     "StepScalar",
     "StepSelector",
+    "WavelengthSelector",
 ]
 
 StepScalar = str | timedelta
@@ -164,13 +164,5 @@ LevelSelector = (
 MemberSelector = Literal["all"] | int | Sequence[int] | Between[int] | Every[int]
 """Members are plain integers."""
 
-SelectorValue = (
-    str
-    | int
-    | float
-    | Decimal
-    | Sequence[str | int | float | Decimal]
-    | Between[object]
-    | Every[object]
-)
-"""Value types for the **selectors escape hatch, see Model.select."""
+WavelengthSelector = Literal["all"] | int | Sequence[int]
+"""Wavelengths in nm, for the few ICON-ART parameters that have them."""

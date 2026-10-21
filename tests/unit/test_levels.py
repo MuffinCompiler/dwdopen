@@ -106,7 +106,12 @@ class FakeCatalogue:
     def parameters(self, model: str) -> list[str]:
         return sorted(self.types)
 
-    def level_types(self, model: str, parameter: str) -> list[LevelType]:
+    def wavelengths(self, model: str, parameter: str) -> list[int]:
+        return []
+
+    def level_types(
+        self, model: str, parameter: str, *, wavelength: int | None = None
+    ) -> list[LevelType]:
         return self.types[parameter]
 
 
@@ -272,10 +277,13 @@ def test_partial_warns_about_what_is_missing(caplog):
         def parameters(self, model):
             return ["PMSL"]
 
-        def level_types(self, model, parameter):
+        def wavelengths(self, model, parameter):
             return []
 
-        def members(self, model, parameter, run, *, level_type=None, level=None):
+        def level_types(self, model, parameter, *, wavelength=None):
+            return []
+
+        def members(self, model, parameter, run, **kw):
             return []
 
         def assets(self, model, parameter, run, **kw):

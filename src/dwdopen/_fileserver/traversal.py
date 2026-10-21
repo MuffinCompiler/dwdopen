@@ -47,6 +47,12 @@ MODEL_KEY = "m"
 PARAMETER_KEY = "p"
 """The parameter shortname, for example T_2M."""
 
+WAVELENGTH_KEY = "wvl1"
+"""The wavelength in nm, for ICON-ART's optical parameters such as
+SAT_BSC_DUST. Absent for everything else. Not in DWD's documentation of the
+v1 keys, but on the server.
+"""
+
 LEVEL_TYPE_KEY = "lvt1"
 """GRIB typeOfFirstFixedSurface. Absent for a 2-D field."""
 
@@ -121,6 +127,7 @@ class OpenDataCatalogue:
         parameter: str | None = None,
         level_type: LevelType | None = None,
         level: Decimal | None = None,
+        wavelength: int | None = None,
     ) -> list[Run]:
         """Runs visible for the model, oldest first.
 
@@ -135,7 +142,7 @@ class OpenDataCatalogue:
         if parameter is None:
             parameter = self._probe_parameter(model)
         run_entries = self._run_entries(
-            self._above_run(model, parameter, level_type, level)
+            self._above_run(model, parameter, level_type, level, wavelength)
         )
         runs = [Run.coerce(entry.name) for entry in run_entries]
         return sorted(runs)
@@ -161,18 +168,17 @@ class OpenDataCatalogue:
         parameter: str,
         level_type: LevelType | None,
         level: Decimal | None,
+        wavelength: int | None = None,
     ) -> tuple[Segment, ...]:
-        """The path segments that sit above the run: m, p and the level.
-        TODO: ICON-ART also puts wvl1/<nm> here, between p and lvt1. Once
-        wavelengths are supported this is where that segment belongs.
+        """The path segments that sit above the run: m, p, the wavelength
+        and the level.
         """
-        where: tuple[Segment, ...] = (
-            (MODEL_KEY, model),
-            (PARAMETER_KEY, parameter),
-        )
+        where = self._parameter_root(model, parameter, wavelength)
         if level_type is None or level is None:
             return where
-        tokens = self._level_tokens_by_value(model, parameter, level_type)
+        tokens = self._level_tokens_by_value(
+            model, parameter, level_type, wavelength
+        )
         token = tokens.get(level)
         if token is None:
             raise MissingAssetError(
@@ -185,19 +191,53 @@ class OpenDataCatalogue:
             (LEVEL_KEY, token),
         )
 
-    def level_types(self, model: str, parameter: str) -> list[LevelType]:
-        """Vertical coordinate types this parameter is published on, sorted."""
-        level_type_key_dir = [
-            entry.name
-            for entry in self._subdirectories(
-                (MODEL_KEY, model), (PARAMETER_KEY, parameter)
+    def _parameter_root(
+        self, model: str, parameter: str, wavelength: int | None
+    ) -> tuple[Segment, ...]:
+        """The path segments of m, p, and wvl1 if a wavelength is given."""
+        root: tuple[Segment, ...] = ((MODEL_KEY, model), (PARAMETER_KEY, parameter))
+        if wavelength is None:
+            return root
+        tokens = self._wavelength_tokens_by_value(model, parameter)
+        # Get the string token of the nm wavelength, which is used on server.
+        token = tokens.get(wavelength)
+        if token is None:
+            raise MissingAssetError(
+                f"{model}/{parameter} has no wavelength {wavelength} nm"
+                + (f". Available: {', '.join(str(v) for v in sorted(tokens))}"
+                   if tokens else "")
             )
-        ]
+        return (*root, (WAVELENGTH_KEY, token))
+
+    def wavelengths(self, model: str, parameter: str) -> list[int]:
+        """Wavelengths in nm this parameter is published for, sorted.
+        Empty for every parameter that has no wvl1 segment, which is all but
+        a few ICON-ART ones.
+        """
+        return sorted(self._wavelength_tokens_by_value(model, parameter))
+
+    def _wavelength_tokens_by_value(
+        self, model: str, parameter: str
+    ) -> dict[int, str]:
+        """Every wavelength in nm, mapped to the string token the server writes
+        for it. Empty if the parameter has no wvl1 segment.
+        """
+        root = ((MODEL_KEY, model), (PARAMETER_KEY, parameter))
+        below_parameter = [entry.name for entry in self._subdirectories(*root)]
+        if WAVELENGTH_KEY not in below_parameter:
+            return {}
+        entries = self._subdirectories(*root, key=WAVELENGTH_KEY)
+        return {int(entry.name): entry.name for entry in entries}
+
+    def level_types(
+        self, model: str, parameter: str, *, wavelength: int | None = None
+    ) -> list[LevelType]:
+        """Vertical coordinate types this parameter is published on, sorted."""
+        root = self._parameter_root(model, parameter, wavelength)
+        level_type_key_dir = [entry.name for entry in self._subdirectories(*root)]
         if LEVEL_TYPE_KEY not in level_type_key_dir:
             return [] # No level types, probably 2-D.
-        entries = self._subdirectories(
-            (MODEL_KEY, model), (PARAMETER_KEY, parameter), key=LEVEL_TYPE_KEY
-        )
+        entries = self._subdirectories(*root, key=LEVEL_TYPE_KEY)
         # Convert to the LevelType type, given the code.
         return sorted(
             (LevelType.of(int(entry.name)) for entry in entries),
@@ -205,10 +245,17 @@ class OpenDataCatalogue:
         )
 
     def levels(
-        self, model: str, parameter: str, level_type: LevelType
+        self,
+        model: str,
+        parameter: str,
+        level_type: LevelType,
+        *,
+        wavelength: int | None = None,
     ) -> list[Decimal]:
         """Level values available, in the unit DWD writes them in."""
-        return sorted(self._level_tokens_by_value(model, parameter, level_type))
+        return sorted(
+            self._level_tokens_by_value(model, parameter, level_type, wavelength)
+        )
 
     def assets(
         self,
@@ -219,12 +266,9 @@ class OpenDataCatalogue:
         level_type: LevelType | None = None,
         levels: Sequence[Decimal] | None = None,
         members: Sequence[int] | None = None,
+        wavelength: int | None = None,
     ) -> list[Asset]:
-        """Every asset of one parameter in one run in one model.
-
-        TODO: ICON-ART wavelengths (wvl1) are not selectable yet, so a
-        parameter that has them cannot be reached from here.
-        """
+        """Every asset of one parameter in one run in one model."""
         chosen_levels: list[Decimal | None] = (
             [None] if level_type is None or levels is None else list(levels)
         )
@@ -239,7 +283,9 @@ class OpenDataCatalogue:
 
         def fetch(combination: tuple[Decimal | None, int | None]) -> list[Asset]:
             level, member = combination
-            return self._assets_for(model, parameter, run, level_type, level, member)
+            return self._assets_for(
+                model, parameter, run, level_type, level, member, wavelength
+            )
 
         # Fetch assets in parallel for each of the combination.
         if len(combinations) == 1:
@@ -262,17 +308,18 @@ class OpenDataCatalogue:
         level_type: LevelType | None = None,
         level: Decimal | None = None,
         member: int | None = None,
+        wavelength: int | None = None,
     ) -> list[Asset]:
         """The available forecast step files for one exact combination.
         """
-        where = self._above_run(model, parameter, level_type, level)
+        where = self._above_run(model, parameter, level_type, level, wavelength)
         run_token = self._run_token(where, parameter, run)
         below_run = (*where, (RUN_KEY, run_token))
 
         # Member for ensemble forecasts
         if member is not None:
             tokens = self._member_tokens_by_value(
-                model, parameter, run, level_type, level
+                model, parameter, run, level_type, level, wavelength
             )
             if member not in tokens:
                 raise MissingAssetError(
@@ -307,6 +354,7 @@ class OpenDataCatalogue:
                     level_type=level_type,
                     level=level,
                     member=member,
+                    wavelength=wavelength,
                 )
             )
         return assets
@@ -319,13 +367,16 @@ class OpenDataCatalogue:
         *,
         level_type: LevelType | None = None,
         level: Decimal | None = None,
+        wavelength: int | None = None,
     ) -> list[int]:
         """Ensemble members available for one parameter in one run, sorted.
         A 3-D field needs the level too, since the run sits below lvt1/lv1.
         Empty for a deterministic model.
         """
         return sorted(
-            self._member_tokens_by_value(model, parameter, run, level_type, level)
+            self._member_tokens_by_value(
+                model, parameter, run, level_type, level, wavelength
+            )
         )
 
     def _member_tokens_by_value(
@@ -335,6 +386,7 @@ class OpenDataCatalogue:
         run: Run,
         level_type: LevelType | None,
         level: Decimal | None,
+        wavelength: int | None = None,
     ) -> dict[int, str]:
         """Returns a map of every member number to the token (string) the server
         uses. On the server, members are padded to two digits currently.
@@ -343,7 +395,7 @@ class OpenDataCatalogue:
         An empty mapping means the parameter has no e/ segment, so the model is
         deterministic.
         """
-        where = self._above_run(model, parameter, level_type, level)
+        where = self._above_run(model, parameter, level_type, level, wavelength)
         run_token = self._run_token(where, parameter, run)
         below_run = (*where, (RUN_KEY, run_token))
         try:
@@ -353,14 +405,17 @@ class OpenDataCatalogue:
         return {int(entry.name): entry.name for entry in entries}
 
     def _level_tokens_by_value(
-        self, model: str, parameter: str, level_type: LevelType
+        self,
+        model: str,
+        parameter: str,
+        level_type: LevelType,
+        wavelength: int | None = None,
     ) -> dict[Decimal, str]:
         """Every available level, mapped to the token the server writes for it.
         Decimal type to avoid floating point issues with soil value heights.
         """
         entries = self._subdirectories(
-            (MODEL_KEY, model),
-            (PARAMETER_KEY, parameter),
+            *self._parameter_root(model, parameter, wavelength),
             (LEVEL_TYPE_KEY, str(level_type.code)),
             key=LEVEL_KEY,
         )
@@ -380,11 +435,8 @@ class OpenDataCatalogue:
             raise
 
     def _explain_unreachable(self, *where: Segment, expected: str) -> None:
-        """Say what a directory holds instead of the key we just failed to read.
-
-        Only ever called after a listing already failed, so the extra request
-        costs nothing while things work. Returns quietly when it cannot improve
-        on the original error, leaving the caller to re-raise that.
+        """Throws what a directory holds instead of the key we just failed to read.
+        "where" builds the path, "expected" was an expected entry at that path.
         """
         try:
             found = [entry.name for entry in self._subdirectories(*where)]
@@ -395,8 +447,8 @@ class OpenDataCatalogue:
             return
         raise NotImplementedError(
             f"{build_path(*where)} contains {'/, '.join(found)}/, not "
-            f"{expected}/. ICON-ART wavelengths (wvl1) are currently "
-            f"unsupported"
+            f"{expected}/, so the path needs more segments (a level, member or "
+            f"wavelength) to get there"
         )
 
     def _run_token(self, where: tuple[Segment, ...], parameter: str, run: Run) -> str:

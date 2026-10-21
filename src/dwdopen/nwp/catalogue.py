@@ -46,6 +46,7 @@ class Catalogue(Protocol):
         parameter: str | None = None,
         level_type: LevelType | None = None,
         level: Decimal | None = None,
+        wavelength: int | None = None,
     ) -> list[Run]:
         """Runs visible for the model, oldest first.
 
@@ -60,7 +61,17 @@ class Catalogue(Protocol):
         """
         ...
 
-    def level_types(self, model: str, parameter: str) -> list[LevelType]:
+    def wavelengths(self, model: str, parameter: str) -> list[int]:
+        """Wavelengths in nm this parameter is published for, sorted.
+
+        Empty for nearly every parameter. Only some ICON-ART ones (for example
+        SAT_BSC_DUST) have a wvl1 segment.
+        """
+        ...
+
+    def level_types(
+        self, model: str, parameter: str, *, wavelength: int | None = None
+    ) -> list[LevelType]:
         """Vertical coordinate types this parameter is published on, sorted.
 
         Empty for a 2-D field, which DWD writes with no lvt1 segment at all.
@@ -70,7 +81,12 @@ class Catalogue(Protocol):
         ...
 
     def levels(
-        self, model: str, parameter: str, level_type: LevelType
+        self,
+        model: str,
+        parameter: str,
+        level_type: LevelType,
+        *,
+        wavelength: int | None = None,
     ) -> list[Decimal]:
         """Level values available for one parameter on one level type, sorted.
 
@@ -88,6 +104,7 @@ class Catalogue(Protocol):
         level_type: LevelType | None = None,
         levels: Sequence[Decimal] | None = None,
         members: Sequence[int] | None = None,
+        wavelength: int | None = None,
     ) -> list[Asset]:
         """Every asset of one parameter in one run.
         ``levels`` selects which levels to fetch, in server units, and is None
@@ -107,6 +124,7 @@ class Catalogue(Protocol):
         *,
         level_type: LevelType | None = None,
         level: Decimal | None = None,
+        wavelength: int | None = None,
     ) -> list[int]:
         """Ensemble members available for one parameter in one run, sorted.
         Empty for a deterministic model, which has no e/ segment at all. A 3-D

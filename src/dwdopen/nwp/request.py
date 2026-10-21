@@ -85,6 +85,10 @@ class Asset:
     """Ensemble member, None for a deterministic model.
     """
 
+    wavelength: int | None = None
+    """Wavelength in nm, only for the few ICON-ART parameters that have one.
+    """
+
     @property
     def parameter(self) -> str:
         return dict(self.keys)["p"]
@@ -111,14 +115,17 @@ class Asset:
         where = self.describe_level()
         if where:
             parts.insert(1, where)
+        if self.wavelength is not None:
+            parts.insert(1, f"{self.wavelength} nm")
         if self.size is not None:
             parts.append(human_size(self.size))
         return f"{type(self).__name__}({', '.join(parts)})"
 
-    def sort_key(self) -> tuple[timedelta, str, int, Decimal, int]:
+    def sort_key(self) -> tuple[timedelta, str, int, int, Decimal, int]:
         """Returns a key to sort the assets by.
-        Time first, parameter second, then the vertical coordinate, so that
-        every field of one forecast step sits together and the steps ascend.
+        Time first, parameter second, wavelength (ICON-ART only) third, then
+        the vertical coordinate, so that every field of one forecast step is
+        together and the steps ascend.
         Even though in general, GRIB messages can be concatenated without having
         to sort them, some other software might expect some sorting. For example,
         CDO (Climate Data Operators) refuses GRIB files whose messages are not in
@@ -128,6 +135,7 @@ class Asset:
         return (
             self.step,
             self.parameter,
+            -1 if self.wavelength is None else self.wavelength,
             -1 if self.level_type is None else self.level_type.code,
             Decimal(0) if self.level is None else self.level,
             -1 if self.member is None else self.member,
@@ -144,6 +152,7 @@ class MissingStep:
     step: timedelta
     level: Decimal | None = None
     member: int | None = None
+    wavelength: int | None = None
 
 
 @dataclass(frozen=True)

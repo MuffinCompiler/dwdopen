@@ -53,7 +53,10 @@ class FakeCatalogue:
         assert model == "icon-eu", f"model reached catalogue as {model!r}"
         return list(AVAILABLE)
 
-    def level_types(self, model, parameter):
+    def wavelengths(self, model, parameter):
+        return []
+
+    def level_types(self, model, parameter, *, wavelength=None):
         assert parameter in AVAILABLE, f"parameter reached catalogue as {parameter!r}"
         return []
 
