@@ -204,7 +204,8 @@ class Model:
 
         names = tuple(self._resolve_parameter(name) for name in names)
 
-        # Error out if wavelengths are given but not part of the model/parameter selection.
+        # Error out if wavelengths are given but not part of the model/parameter
+        # selection.
         if wavelengths is not None:
             self._require_wavelengths(names)
 
