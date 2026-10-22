@@ -79,8 +79,11 @@ def test_pressure_levels_are_given_in_hpa(tmp_path):
             parameters="T", level_type="pressure", levels=[850, 500], steps="0h"
         ).resolve()
 
-    # 850 hPa is 85000 Pa in the path; the conversion happens once, here.
-    assert sorted(str(a.level) for a in plan.assets) == ["50000", "85000"]
+    # hPa for the user, 85000 Pa in the path.
+    assert sorted(str(a.level) for a in plan.assets) == ["500", "850"]
+    assert sorted(a.path.split("/lv1/")[1].split("/")[0] for a in plan.assets) == [
+        "50000", "85000"
+    ]
     assert all("/lvt1/100/" in a.path for a in plan.assets)
 
 

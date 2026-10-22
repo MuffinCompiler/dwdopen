@@ -204,7 +204,7 @@ class Query:
                         parameter,
                         chosen,
                         _named_steps(self._steps),
-                        levels,
+                        self._user_levels(levels),
                         members,
                         wavelength,
                     )
@@ -228,6 +228,14 @@ class Query:
             missing=tuple(missing),
             downloader=self._downloader,
         )
+
+    def _user_levels(self, levels: list[Decimal] | None) -> list[Decimal] | None:
+        """Levels from server units (pressure Pa) into the user-facing units
+        (pressure hPa).
+        """
+        if levels is None or self._level_type is None:
+            return None
+        return [self._level_type.to_user(value) for value in levels]
 
     def _wanted_wavelengths(self, parameter: str) -> list[int | None]:
         """Which wavelengths to fetch for one parameter. [None] for a parameter

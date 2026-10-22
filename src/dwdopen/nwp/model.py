@@ -131,17 +131,19 @@ class Model:
         return canonical
 
     def levels(self, parameter: str, level_type: LevelTypeLike) -> list[Decimal]:
-        """Level values this parameter is published on, in DWD's own unit.
-        So Pa for pressure and metres for soil.
+        """Level values this parameter is published on, in the unit select()
+        takes: hPa for pressure, the index for model levels, metres for soil.
         """
         name = self._resolve_parameter(parameter)
+        kind = LevelType.coerce(level_type)
         wavelengths = self._catalogue.wavelengths(self._name, name)
-        return self._catalogue.levels(
+        server_levels = self._catalogue.levels(
             self._name,
             name,
-            LevelType.coerce(level_type),
+            kind,
             wavelength=wavelengths[0] if wavelengths else None,
         )
+        return [kind.to_user(value) for value in server_levels]
 
     def runs(self, *, parameter: str | None = None) -> list[Run]:
         """Runs currently visible, oldest first.

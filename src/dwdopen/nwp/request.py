@@ -76,7 +76,8 @@ class Asset:
     """None for a 2-D field."""
 
     level: Decimal | None = None
-    """The level in the unit DWD writes, so Pa for pressure and metres for soil.
+    """The level in the unit select() takes, so hPa for pressure, the index
+    for model levels and metres for soil. The path has Pa for pressure.
     Decimal rather than float because soil levels are fractions of a metre
     (0.005, 0.18), might become problematic with floating point representations.
     """
@@ -99,16 +100,14 @@ class Asset:
 
     def describe_level(self) -> str:
         """The vertical level in the unit the reader operates in.
-        Empty for a 2-D field. Pressure comes back as "850 hPa" rather than the
-        85000 Pa of the path, because that is what was asked for.
+        Empty for a 2-D field. Pressure comes back as "850 hPa".
         """
         if self.level_type is None or self.level is None:
             return ""
-        value = self.level_type.to_user(self.level)
         unit = self.level_type.user_unit or self.level_type.unit
         if unit in (None, "index"):
-            return f"level {_trim(value)}"
-        return f"{_trim(value)} {unit}"
+            return f"level {_trim(self.level)}"
+        return f"{_trim(self.level)} {unit}"
 
     def __repr__(self) -> str:
         parts = [self.parameter, format_duration(self.step)]
@@ -146,7 +145,8 @@ class Asset:
 class MissingStep:
     """A step that was requested but is not in the run.
     Level and member being None means step is missing on every level and member.
-    Otherwise it is missing only on the level and member given.
+    Otherwise it is missing only on the level and member given. The level is
+    in the unit select() takes, so hPa for pressure.
     """
     parameter: str
     step: timedelta
@@ -423,7 +423,7 @@ class ResolvedRequest:
         name = kind.alias or f"lvt{kind.code}"
         if len(levels) == 1:
             unit = kind.user_unit or kind.unit or ""
-            value = _trim(kind.to_user(levels.pop()))
+            value = _trim(levels.pop())
             return f"{name}{value}" if unit == "index" else f"{name}{value}{unit}"
         return f"{name}{len(levels)}lv"
 

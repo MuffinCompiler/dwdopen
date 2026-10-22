@@ -40,10 +40,8 @@ def test_a_surface_asset_names_parameter_step_and_size():
     assert repr(asset("T_2M", 6)) == "Asset(T_2M, 6h, 781.2 KB)"
 
 
-def test_a_pressure_asset_reads_back_in_hpa_not_pa():
-    text = repr(asset("T", 0, PRESSURE, 85000))
-    assert "850 hPa" in text
-    assert "85000" not in text
+def test_a_pressure_asset_reads_in_hpa():
+    assert "850 hPa" in repr(asset("T", 0, PRESSURE, 850))
 
 
 def test_a_model_level_asset_says_level_not_a_unit():
@@ -63,7 +61,7 @@ def test_an_asset_without_a_size_omits_it():
 # --- ResolvedRequest ------------------------------------------------------
 
 def test_a_plan_summarises_rather_than_listing_its_assets():
-    many = [asset("U", h, PRESSURE, 85000) for h in range(120)]
+    many = [asset("U", h, PRESSURE, 850) for h in range(120)]
     text = repr(plan(many))
 
     assert "120 assets" in text

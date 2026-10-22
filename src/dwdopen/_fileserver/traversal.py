@@ -352,7 +352,7 @@ class OpenDataCatalogue:
                     size=entry.size,
                     modified=entry.modified,
                     level_type=level_type,
-                    level=level,
+                    level=_user_level(level_type, level),
                     member=member,
                     wavelength=wavelength,
                 )
@@ -490,3 +490,13 @@ class OpenDataCatalogue:
                 f"the server's listing format changed"
             )
         return entries
+
+
+def _user_level(
+    level_type: LevelType | None, level: Decimal | None
+) -> Decimal | None:
+    """The level of an asset in the user-facing unit (hPa for pressure).
+    """
+    if level_type is None or level is None:
+        return None
+    return level_type.to_user(level)

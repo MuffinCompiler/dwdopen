@@ -2,6 +2,12 @@
 
 Versions follow [semantic versioning](https://semver.org/).
 
+## Unreleased
+
+- Pressure levels are now consistently in hPa when user facing. Only to build the path
+   to the data on the server, the unit is converted into Pa as this is what the DWD
+   server operates on.
+
 ## 0.5.0
 
 - ICON-ART wavelengths: `SAT_BSC_DUST` and `CEIL_BSC_DUST`, which DWD publishes per

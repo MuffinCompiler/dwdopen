@@ -64,13 +64,12 @@ def test_more_parameters_are_counted_so_the_name_stays_short():
 
 
 def test_a_single_pressure_level_is_named_in_hpa():
-    name = plan([asset("T", level_type=PRESSURE, level=85000)]).suggested_name()
+    name = plan([asset("T", level_type=PRESSURE, level=850)]).suggested_name()
     assert "_pressure850hPa_" in name
-    assert "85000" not in name
 
 
 def test_several_levels_are_counted():
-    assets = [asset("T", level_type=PRESSURE, level=lv) for lv in (85000, 50000)]
+    assets = [asset("T", level_type=PRESSURE, level=lv) for lv in (850, 500)]
     assert "_pressure2lv_" in plan(assets).suggested_name()
 
 
