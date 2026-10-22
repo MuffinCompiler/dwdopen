@@ -200,8 +200,8 @@ class Model:
 
     def select(
         self,
-        *,
         parameters: str | Sequence[str],
+        *,
         steps: StepSelector | None = None,
         level_type: LevelTypeLike | None = None,
         levels: LevelSelector | None = None,

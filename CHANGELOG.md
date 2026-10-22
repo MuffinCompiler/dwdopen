@@ -15,6 +15,8 @@ Versions follow [semantic versioning](https://semver.org/).
    first level type and level to look for available runs.
 - Every error is now a `DWDOpenError`. An unexpected directory layout raises
    `CatalogueError`.
+- `select("T_2M")`: the parameters can be given positionally.
+- A `Run` prints as `Run(2026-10-22T00:00Z)` instead of the full `datetime` repr.
 
 ## 0.5.0
 

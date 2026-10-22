@@ -25,7 +25,8 @@ from dwdopen.exceptions import (
 )
 from dwdopen.nwp.durations import hours, minutes
 from dwdopen.nwp.model import Model, ParameterInfo
-from dwdopen.nwp.request import DownloadResult
+from dwdopen.nwp.query import Query
+from dwdopen.nwp.request import Asset, DownloadResult, MissingStep, ResolvedRequest
 from dwdopen.nwp.run import Run
 from dwdopen.nwp.selectors import Between, Every, LevelType
 
@@ -65,6 +66,7 @@ __all__ = [
     "DWD",
     "NWP",
     "AmbiguousSelectionError",
+    "Asset",
     "Between",
     "CatalogueError",
     "CatalogueUnavailableError",
@@ -78,9 +80,12 @@ __all__ = [
     "InvalidSelectorError",
     "LevelType",
     "MissingAssetError",
+    "MissingStep",
     "Model",
     "NoMatchingRunError",
     "ParameterInfo",
+    "Query",
+    "ResolvedRequest",
     "ResolutionError",
     "Run",
     "RunExpiredError",

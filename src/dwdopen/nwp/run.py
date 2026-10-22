@@ -58,6 +58,9 @@ class Run:
     def __str__(self) -> str:
         return self.reference_time.isoformat()
 
+    def __repr__(self) -> str:
+        return f"Run({self.reference_time:%Y-%m-%dT%H:%MZ})"
+
 
 def _as_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
