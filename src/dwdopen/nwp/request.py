@@ -21,7 +21,7 @@ from typing import Literal, Protocol
 from dwdopen.exceptions import DownloadError, InvalidSelectorError
 from dwdopen.nwp.durations import format_duration
 from dwdopen.nwp.run import Run
-from dwdopen.nwp.selectors import LevelType
+from dwdopen.nwp.selectors import LevelType, check_choice
 
 __all__ = [
     "Asset",
@@ -46,6 +46,9 @@ logger = logging.getLogger("dwdopen")
 CombineMode = Literal["none", "all", "member", "parameter"]
 """How the downloaded messages are laid out on disk.
 """
+
+COMBINE_MODES = ("all", "none", "member", "parameter")
+"""The values of CombineMode. How to combine downloaded GRIB messages."""
 
 
 @dataclass(frozen=True)
@@ -249,6 +252,7 @@ class ResolvedRequest:
         a small home partition. It has to be on the same filesystem as the
         destination, because the finished file is published by renaming it.
         """
+        check_choice("combine", combine, COMBINE_MODES)
         if self.downloader is None:
             raise DownloadError(
                 "this request was resolved without a downloader, so it cannot "

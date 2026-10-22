@@ -12,6 +12,8 @@ from dwdopen.exceptions import InvalidSelectorError
 
 __all__ = [
     "KNOWN_LEVEL_TYPES",
+    "check_choice",
+    "check_text_selector",
     "Between",
     "Every",
     "LevelScalar",
@@ -163,6 +165,27 @@ LevelSelector = (
 
 MemberSelector = Literal["all"] | int | Sequence[int] | Between[int] | Every[int]
 """Members are plain integers."""
+
+def check_choice(name: str, value: object, choices: Sequence[str]) -> None:
+    """Raise InvalidSelectorError unless value is one of the choices.
+    """
+    if value not in choices:
+        listed = ", ".join(repr(choice) for choice in choices)
+        raise InvalidSelectorError(
+            f"{name}={value!r} is not supported. Use one of: {listed}"
+        )
+
+
+def check_text_selector(name: str, value: object, example: str) -> None:
+    """Raise InvalidSelectorError for a string other than "all". Optionally,
+    an example can be passed how a valid choice looks like to the user.
+    """
+    if isinstance(value, str) and value != "all":
+        raise InvalidSelectorError(
+            f'{name}={value!r} is not supported. Give numbers, e.g. {example}, '
+            f'or "all"'
+        )
+
 
 WavelengthSelector = Literal["all"] | int | Sequence[int]
 """Wavelengths in nm, for the few ICON-ART parameters that have them."""

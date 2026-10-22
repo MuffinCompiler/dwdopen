@@ -18,6 +18,7 @@ from dwdopen.exceptions import (
 from dwdopen.nwp.catalogue import Catalogue
 from dwdopen.nwp.durations import format_duration, parse_duration
 from dwdopen.nwp.request import (
+    COMBINE_MODES,
     Asset,
     CombineMode,
     Downloader,
@@ -36,6 +37,7 @@ from dwdopen.nwp.selectors import (
     StepScalar,
     StepSelector,
     WavelengthSelector,
+    check_choice,
 )
 
 logger = logging.getLogger("dwdopen")
@@ -43,6 +45,9 @@ logger = logging.getLogger("dwdopen")
 __all__ = ["Query"]
 
 Require = Literal["complete", "partial"]
+
+REQUIRE_MODES = ("complete", "partial")
+"""Possible values of Require."""
 
 DEFAULT_SETTLE = timedelta(seconds=90)
 """Some settle time that needs to pass until a run is deemed valid.
@@ -106,6 +111,7 @@ class Query:
         this is not the same as Model.latest_run.
         Uses the cached snapshot and calls the internal implementation.
         """
+        check_choice("require", require, REQUIRE_MODES)
         with self._catalogue.snapshot():
             return self._newest_run(require, settle)
 
@@ -161,6 +167,7 @@ class Query:
         is the case.
         Uses the cached snapshot and calls the helper method.
         """
+        check_choice("require", require, REQUIRE_MODES)
         with self._catalogue.snapshot():
             return self._against(run, require)
 
@@ -284,6 +291,11 @@ class Query:
             wavelength=wavelength,
         )
         if not available:
+            if self._members is not None:
+                raise InvalidSelectorError(
+                    f"members were given but {parameter} in {self._model!r} has "
+                    f"no ensemble members. Use one of the -eps models"
+                )
             return None
         # The subset of available members that the user asked for.
         return _select_members(available, self._members)
@@ -301,6 +313,7 @@ class Query:
         Convenience only. resolve() first when the download is worth inspecting
         before thousands of files start being downloaded.
         """
+        check_choice("combine", combine, COMBINE_MODES)
         return self.resolve(run=run, require=require).download(
             destination, combine=combine, temp_dir=temp_dir
         )

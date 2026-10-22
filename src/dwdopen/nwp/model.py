@@ -26,6 +26,7 @@ from dwdopen.nwp.selectors import (
     MemberSelector,
     StepSelector,
     WavelengthSelector,
+    check_text_selector,
 )
 
 __all__ = ["Model", "ParameterInfo"]
@@ -197,8 +198,11 @@ class Model:
         have them, such as SAT_BSC_DUST. Leaving it out means all of them. Specifying
         wavelengths on models/parameters without wavelengths raises an error.
         """
-        # Validate steps before accessing the network.
+        # Validate steps and the other selectors before accessing the network.
         check_step_selector(steps)
+        check_text_selector("levels", levels, "levels=[850, 500]")
+        check_text_selector("members", members, "members=[1, 2]")
+        check_text_selector("wavelengths", wavelengths, "wavelengths=532")
 
         names = (parameters,) if isinstance(parameters, str) else tuple(parameters)
         if not names:

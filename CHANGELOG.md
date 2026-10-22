@@ -7,6 +7,10 @@ Versions follow [semantic versioning](https://semver.org/).
 - Pressure levels are now consistently in hPa when user facing. Only to build the path
    to the data on the server, the unit is converted into Pa as this is what the DWD
    server operates on.
+- A mistyped options now raises `InvalidSelectorError` instead of silently failing or
+   or leading to unexpected behavior (e.g., `require="full"` as full is not a defined
+   keyword.
+- `members=` on a deterministic model raises instead of being ignored.
 
 ## 0.5.0
 
