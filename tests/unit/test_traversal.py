@@ -3,7 +3,11 @@ from datetime import timedelta
 import pytest
 
 from dwdopen._fileserver.traversal import OpenDataCatalogue
-from dwdopen.exceptions import CatalogueUnavailableError, RunExpiredError
+from dwdopen.exceptions import (
+    CatalogueError,
+    CatalogueUnavailableError,
+    RunExpiredError,
+)
 from dwdopen.nwp.run import Run
 
 MODELS = """<pre><a href="../">../</a>
@@ -159,7 +163,7 @@ def test_assets_of_an_expired_run_say_so():
 def test_a_multi_level_parameter_says_what_is_there_instead():
     # .../p/T/r/ does not exist: the runs sit below lvt1/<type>/lv1/<level>/.
     http = ScriptedHttp({"m/icon-eu/p/T/": MULTI_LEVEL_PARAMETER})
-    with pytest.raises(NotImplementedError, match="contains lvt1/, not r/"):
+    with pytest.raises(CatalogueError, match="contains lvt1/, not r/"):
         OpenDataCatalogue(http).runs("icon-eu", parameter="T")
 
 
@@ -173,7 +177,7 @@ def test_an_ensemble_says_what_is_there_instead():
             "m/icon-eu-eps/p/T_2M/r/2026-09-16T00:00/": ENSEMBLE_RUN,
         }
     )
-    with pytest.raises(NotImplementedError, match="contains e/, not s/"):
+    with pytest.raises(CatalogueError, match="contains e/, not s/"):
         OpenDataCatalogue(http).assets(
             "icon-eu-eps", "T_2M", Run.coerce("2026-09-16T00:00")
         )

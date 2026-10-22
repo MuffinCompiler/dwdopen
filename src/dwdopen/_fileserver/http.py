@@ -7,7 +7,11 @@ import time
 
 import httpx
 
-from dwdopen.exceptions import CatalogueUnavailableError, DownloadError
+from dwdopen.exceptions import (
+    CatalogueUnavailableError,
+    ClientClosedError,
+    DownloadError,
+)
 
 __all__ = ["HttpClient"]
 
@@ -33,6 +37,7 @@ class HttpClient:
         timeout: float = 30.0,
         max_connections: int = 16,
     ) -> None:
+        self._closed = False
         self._client = httpx.Client(
             base_url=base_url.rstrip("/"),
             timeout=timeout,
@@ -46,6 +51,7 @@ class HttpClient:
         A timeout, a dropped connection or a server error (429, 5xx) is retried
         a few times. A 404 is not retried.
         """
+        self._check_open()
         attempt = 1
         while True:
             try:
@@ -70,6 +76,7 @@ class HttpClient:
         The status is put in the error so the caller can decide how to recover
         from the error based on the failed state.
         """
+        self._check_open()
         try:
             response = self._client.get(path)
             response.raise_for_status()
@@ -83,7 +90,18 @@ class HttpClient:
         return response.content
 
     def close(self) -> None:
+        self._closed = True
         self._client.close()
+
+    def _check_open(self) -> None:
+        """Raise ClientClosedError after close(), instead of httpx's
+        RuntimeError, which is no dwdopen error.
+        """
+        if self._closed:
+            raise ClientClosedError(
+                "this DWD client is closed. Use the model and its queries "
+                "inside the `with DWD() as dwd:` block, or create a new DWD()"
+            )
 
 
 def _worth_retrying(exc: httpx.HTTPError) -> bool:

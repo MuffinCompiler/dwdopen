@@ -253,6 +253,9 @@ class ResolvedRequest:
         destination, because the finished file is published by renaming it.
         """
         check_choice("combine", combine, COMBINE_MODES)
+        destination = os.path.expanduser(destination) # Expand ~
+        if temp_dir is not None:
+            temp_dir = os.path.expanduser(temp_dir)
         if self.downloader is None:
             raise DownloadError(
                 "this request was resolved without a downloader, so it cannot "

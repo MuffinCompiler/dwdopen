@@ -11,6 +11,10 @@ Versions follow [semantic versioning](https://semver.org/).
    or leading to unexpected behavior (e.g., `require="full"` as full is not a defined
    keyword.
 - `members=` on a deterministic model raises instead of being ignored.
+- `Model.runs(parameter=...)` now works with only given a parameter. It then takes the 
+   first level type and level to look for available runs.
+- Every error is now a `DWDOpenError`. An unexpected directory layout raises
+   `CatalogueError`.
 
 ## 0.5.0
 

@@ -15,6 +15,7 @@ from dwdopen._fileserver.http import HttpClient
 from dwdopen._fileserver.listing import ListingEntry, parse_listing
 from dwdopen._fileserver.paths import Segment, build_path
 from dwdopen.exceptions import (
+    CatalogueError,
     CatalogueUnavailableError,
     MissingAssetError,
     RunExpiredError,
@@ -445,7 +446,7 @@ class OpenDataCatalogue:
         if found == [expected]:
             # The key is there, so the failure was not about the layout.
             return
-        raise NotImplementedError(
+        raise CatalogueError(
             f"{build_path(*where)} contains {'/, '.join(found)}/, not "
             f"{expected}/, so the path needs more segments (a level, member or "
             f"wavelength) to get there"

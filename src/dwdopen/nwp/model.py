@@ -95,13 +95,13 @@ class Model:
         "static" parameter here is not checking available runs, the steps and
         members might have no definite answer.
         """
-        name = self._resolve_parameter(name)
+        parameter = self._resolve_parameter(name)
         # Wavelengths (ICON-ART) are directly under parameter.
-        wavelengths = self._catalogue.wavelengths(self._name, name)
+        wavelengths = self._catalogue.wavelengths(self._name, parameter)
         return ParameterInfo(
             model=self._name,
-            name=name,
-            level_types=tuple(self._level_types(name)),
+            name=parameter,
+            level_types=tuple(self._level_types(parameter)),
             wavelengths=tuple(wavelengths),
         )
 
@@ -116,17 +116,20 @@ class Model:
             wavelength=wavelengths[0] if wavelengths else None,
         )
 
-    def _resolve_parameter(self, name: str) -> str:
+    def _resolve_parameter(self, parameter: str) -> str:
         """The catalogue's own spelling of a parameter name.
         The legacy layout wrote t_2m, where v1 writes now T_2M and DWD's
         manual uses both. Basically returns the canonical name.
         """
         available = self._catalogue.parameters(self._name)
-        canonical = resolve_name(name, available)
+        canonical = resolve_name(parameter, available)
         if canonical is None:
             raise UnknownParameterError(
                 unknown_name_message(
-                    "parameter", name, available, context=f"model {self._name!r}"
+                    "parameter",
+                    parameter,
+                    available,
+                    context=f"model {self._name!r}",
                 )
             )
         return canonical
@@ -135,12 +138,12 @@ class Model:
         """Level values this parameter is published on, in the unit select()
         takes: hPa for pressure, the index for model levels, metres for soil.
         """
-        name = self._resolve_parameter(parameter)
+        parameter = self._resolve_parameter(parameter)
         kind = LevelType.coerce(level_type)
-        wavelengths = self._catalogue.wavelengths(self._name, name)
+        wavelengths = self._catalogue.wavelengths(self._name, parameter)
         server_levels = self._catalogue.levels(
             self._name,
-            name,
+            parameter,
             kind,
             wavelength=wavelengths[0] if wavelengths else None,
         )
@@ -156,10 +159,32 @@ class Model:
         Use Query.latest_run when you need a run that actually satisfies a
         specific selection.
         """
-        if parameter is not None:
-            parameter = self._resolve_parameter(parameter)
         with self._catalogue.snapshot():
-            return self._catalogue.runs(self._name, parameter=parameter)
+            if parameter is None:
+                return self._catalogue.runs(self._name)
+            parameter = self._resolve_parameter(parameter)
+
+            # As runs sit below level type, level, etc., just pick the first
+            # one of these to reach and "probe" a run directory.
+            wavelengths = self._catalogue.wavelengths(self._name, parameter)
+            wavelength = wavelengths[0] if wavelengths else None
+            level_types = self._catalogue.level_types(
+                self._name, parameter, wavelength=wavelength
+            )
+            level_type = level_types[0] if level_types else None
+            level = None
+            if level_type is not None:
+                levels = self._catalogue.levels(
+                    self._name, parameter, level_type, wavelength=wavelength
+                )
+                level = levels[0]
+            return self._catalogue.runs(
+                self._name,
+                parameter=parameter,
+                level_type=level_type,
+                level=level,
+                wavelength=wavelength,
+            )
 
     def latest_run(self, *, parameter: str | None = None) -> Run:
         """Newest run visible for this model. Same issues as runs().
@@ -204,22 +229,22 @@ class Model:
         check_text_selector("members", members, "members=[1, 2]")
         check_text_selector("wavelengths", wavelengths, "wavelengths=532")
 
-        names = (parameters,) if isinstance(parameters, str) else tuple(parameters)
-        if not names:
+        wanted = (parameters,) if isinstance(parameters, str) else tuple(parameters)
+        if not wanted:
             raise InvalidSelectorError("select() needs at least one parameter")
 
-        names = tuple(self._resolve_parameter(name) for name in names)
+        wanted = tuple(self._resolve_parameter(parameter) for parameter in wanted)
 
         # Error out if wavelengths are given but not part of the model/parameter
         # selection.
         if wavelengths is not None:
-            self._require_wavelengths(names)
+            self._require_wavelengths(wanted)
 
-        chosen_type = self._resolve_level_type(names, level_type, levels)
+        chosen_type = self._resolve_level_type(wanted, level_type, levels)
         return Query(
             self._catalogue,
             self._name,
-            parameters=names,
+            parameters=wanted,
             steps=steps,
             level_type=chosen_type,
             levels=levels,
@@ -234,9 +259,9 @@ class Model:
         """
         # Collect parameter names without wavelengths.
         without = [
-            name
-            for name in parameters
-            if not self._catalogue.wavelengths(self._name, name)
+            parameter
+            for parameter in parameters
+            if not self._catalogue.wavelengths(self._name, parameter)
         ]
         if without:
             raise InvalidSelectorError(
@@ -256,7 +281,9 @@ class Model:
         the level type is unambiguous. Every selected parameter must be available
         on the same level type, or on none at all.
         """
-        per_parameter = {name: self._level_types(name) for name in parameters}
+        per_parameter = {
+            parameter: self._level_types(parameter) for parameter in parameters
+        }
 
         if level_type is not None:
             chosen = LevelType.coerce(level_type)
@@ -279,8 +306,8 @@ class Model:
             ordered = sorted(candidates, key=lambda c: c.code)
             listed = ", ".join(str(lt) for lt in ordered)
             spread = "; ".join(
-                f"{name}: {', '.join(str(lt) for lt in types) or 'none'}"
-                for name, types in sorted(per_parameter.items())
+                f"{parameter}: {', '.join(str(lt) for lt in types) or 'none'}"
+                for parameter, types in sorted(per_parameter.items())
             )
             raise AmbiguousSelectionError(
                 f"level type is ambiguous for this selection ({spread}). "
@@ -302,16 +329,16 @@ class Model:
         """
         # Get all parameters that are not available on the chosen level type.
         wrong = {
-            name: level_types
-            for name, level_types in per_parameter.items()
+            parameter: level_types
+            for parameter, level_types in per_parameter.items()
             if chosen not in level_types
         }
         if not wrong:
             return
 
         details = "; ".join(
-            f"{name} is on {', '.join(str(t) for t in types) or 'a single level'}"
-            for name, types in sorted(wrong.items())
+            f"{parameter} is on {', '.join(str(t) for t in types) or 'a single level'}"
+            for parameter, types in sorted(wrong.items())
         )
         raise InvalidSelectorError(
             f"{', '.join(sorted(wrong))} in {self._name!r} "

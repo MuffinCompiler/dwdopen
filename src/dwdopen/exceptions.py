@@ -9,6 +9,7 @@ __all__ = [
     "AmbiguousSelectionError",
     "CatalogueError",
     "CatalogueUnavailableError",
+    "ClientClosedError",
     "DWDOpenError",
     "DownloadError",
     "IncompleteRunError",
@@ -96,6 +97,12 @@ class DownloadError(DWDOpenError):
     def __init__(self, message: str, *, status: int | None = None) -> None:
         super().__init__(message)
         self.status = status
+
+
+class ClientClosedError(DWDOpenError):
+    """The DWD client was closed, for example by leaving its with block, and
+    cannot send requests anymore.
+    """
 
 
 # --- helpers ---------------------------------------------------------------
