@@ -209,11 +209,6 @@ class DownloadResult:
     """Assets that were already present, so nothing had to be fetched for them.
     """
 
-    @property
-    def total_size(self) -> int:
-        """Bytes actually transferred."""
-        return self.bytes_downloaded
-
 
 
 @dataclass(frozen=True)

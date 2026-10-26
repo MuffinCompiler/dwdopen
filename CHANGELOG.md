@@ -2,6 +2,17 @@
 
 Versions follow [semantic versioning](https://semver.org/).
 
+## Unreleased
+
+- Removed `Model.latest_run()`. It returned the newest run listed, without checking
+   that the run is complete, which is unintuitive. `model.runs()[-1]` for the
+   newest listed run, or `query.latest_run()` for the newest run that has everything
+   the query asks for.
+- Removed `DownloadResult.total_size`, was duplicate of `bytes_downloaded`.
+- A `Query` prints like the `select()` call that built it, with steps, level type,
+   levels, members and wavelengths: `Query('icon-eu', ['T'], level_type='pressure',
+   levels=[850, 500])`.
+
 ## 0.5.1
 
 - Pressure levels are now consistently in hPa when user facing. Only to build the path

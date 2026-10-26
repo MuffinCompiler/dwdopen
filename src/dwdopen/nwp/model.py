@@ -9,7 +9,6 @@ from decimal import Decimal
 from dwdopen.exceptions import (
     AmbiguousSelectionError,
     InvalidSelectorError,
-    NoMatchingRunError,
     UnknownParameterError,
     resolve_name,
     unknown_name_message,
@@ -156,7 +155,8 @@ class Model:
         model, so this reflects whichever parameter is named. A run can appear here
         while it is still being published. Retention is short too: ICON-EU
         keeps 8 runs (~24 h), ICON-D2-RUC 32.
-        Use Query.latest_run when you need a run that actually satisfies a
+        runs()[-1] is the newest run listed, not necessarily a complete one.
+        Use Query.latest_run() when you need a run that actually satisfies a
         specific selection.
         """
         with self._catalogue.snapshot():
@@ -185,18 +185,6 @@ class Model:
                 level=level,
                 wavelength=wavelength,
             )
-
-    def latest_run(self, *, parameter: str | None = None) -> Run:
-        """Newest run visible for this model. Same issues as runs().
-        It has no completeness check and no settle guard. That is Query.latest_run.
-        """
-        runs = self.runs(parameter=parameter)
-        if not runs:
-            message = f"no runs visible for model {self._name!r}"
-            if parameter:
-                message += f" via parameter {parameter!r}"
-            raise NoMatchingRunError(message)
-        return runs[-1]
 
     def select(
         self,

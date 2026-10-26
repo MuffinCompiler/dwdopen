@@ -92,11 +92,21 @@ class Query:
         self._downloader = downloader
 
     def __repr__(self) -> str:
-        vertical = "" if self._level_type is None else f", levels={self._level_type}"
-        return (
-            f"{type(self).__name__}(model={self._model!r}, "
-            f"parameters={list(self._parameters)}{vertical})"
-        )
+        # Written like the select() call that would build this query, leaving
+        # out what was not given.
+        parts = [repr(self._model), repr(list(self._parameters))]
+        if self._steps is not None:
+            parts.append(f"steps={self._steps!r}")
+        if self._level_type is not None:
+            level_type = self._level_type.alias or self._level_type.code
+            parts.append(f"level_type={level_type!r}")
+        if self._levels is not None:
+            parts.append(f"levels={self._levels!r}")
+        if self._members is not None:
+            parts.append(f"members={self._members!r}")
+        if self._wavelengths is not None:
+            parts.append(f"wavelengths={self._wavelengths!r}")
+        return f"{type(self).__name__}({', '.join(parts)})"
 
     def latest_run(
         self,
@@ -108,7 +118,7 @@ class Query:
         Tries the available runs from newest to oldest, and returns the newest
         that has all the files requested in the query available. The data on the
         server must be "settled". Thus, a run still being published is skipped, so
-        this is not the same as Model.latest_run.
+        this is not the same as Model.runs()[-1].
         Uses the cached snapshot and calls the internal implementation.
         """
         check_choice("require", require, REQUIRE_MODES)
