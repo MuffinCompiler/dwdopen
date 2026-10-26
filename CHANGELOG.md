@@ -2,7 +2,7 @@
 
 Versions follow [semantic versioning](https://semver.org/).
 
-## Unreleased
+## 0.5.1
 
 - Pressure levels are now consistently in hPa when user facing. Only to build the path
    to the data on the server, the unit is converted into Pa as this is what the DWD
@@ -17,6 +17,8 @@ Versions follow [semantic versioning](https://semver.org/).
    `CatalogueError`.
 - `select("T_2M")`: the parameters can be given positionally.
 - A `Run` prints as `Run(2026-10-22T00:00Z)` instead of the full `datetime` repr.
+- `NoMatchingRunError` from `latest_run()` says why the runs were skipped: for
+   example, which fields are missing, or that a run is still being published.
 
 ## 0.5.0
 

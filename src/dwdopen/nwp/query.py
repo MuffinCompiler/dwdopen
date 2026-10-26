@@ -128,24 +128,41 @@ class Query:
             level=probe_levels[0] if probe_levels else None,
             wavelength=probe_wavelength,
         )
+        if not candidates:
+            raise NoMatchingRunError(
+                f"no runs of {self._model!r} are listed for {first}"
+            )
         now = datetime.now(UTC)
 
+        # Reasons why each run was skipped (not matching query, e.g.,
+        # incomplete).
+        reasons = []
         for run in reversed(candidates):
             try:
                 request = self.resolve(run=run, require=require)
-            except (IncompleteRunError, RunExpiredError):
+            except IncompleteRunError as exc:
+                reasons.append(str(exc))
+                continue
+            except RunExpiredError:
                 # A run can be listed for the parameter we probed with and
                 # still be absent for another, because parameters are not
                 # published at the same moment.
+                reasons.append(
+                    f"run {run} is not listed for every parameter of this query"
+                )
                 continue
-            if _still_publishing(request, now, settle):
+            # Look if newest file is too "young" (still settling)
+            age = _newest_file_age(request, now)
+            if age is not None and age < settle:
+                reasons.append(
+                    f"run {run} is still being published (its newest file is "
+                    f"{int(age.total_seconds())} s old, settle waits "
+                    f"{int(settle.total_seconds())} s)"
+                )
                 continue
             return request.run
 
-        raise NoMatchingRunError(
-            f"no run of {self._model!r} satisfies this query "
-            f"({len(candidates)} candidates were checked)"
-        )
+        raise NoMatchingRunError(_describe_rejected(self._model, reasons))
 
     def resolve(
         self,
@@ -439,14 +456,25 @@ def _expand_every_level(
     return values
 
 
-def _still_publishing(
-    request: ResolvedRequest, now: datetime, settle: timedelta
-) -> bool:
-    """True while the run's newest file is younger than the settle window."""
+def _newest_file_age(request: ResolvedRequest, now: datetime) -> timedelta | None:
+    """How long ago the run's newest file was written, None if unknown."""
     times = [asset.modified for asset in request.assets if asset.modified is not None]
     if not times:
-        return False
-    return now - max(times) < settle
+        return None
+    return now - max(times)
+
+
+def _describe_rejected(model: str, reasons: list[str]) -> str:
+    """The NoMatchingRunError message: why the newest runs were skipped."""
+    lines = [
+        f"no run of {model!r} satisfies this query "
+        f"({len(reasons)} runs were checked, newest first):"
+    ]
+    for reason in reasons[:3]:
+        lines.append(f"  {reason}")
+    if len(reasons) > 3:
+        lines.append(f"  ... and {len(reasons) - 3} older runs")
+    return "\n".join(lines)
 
 
 def _select_steps(
