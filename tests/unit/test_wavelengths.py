@@ -99,6 +99,7 @@ def test_leaving_out_wavelengths_means_all_of_them():
     plan = query.resolve(run=RUN)
     assert len(plan.assets) == 2 * 2 * 2
     assert {asset.wavelength for asset in plan.assets} == {532, 1064}
+    assert "532, 1064 nm" in repr(plan)
 
 
 def test_one_wavelength_can_be_chosen():
@@ -121,6 +122,7 @@ def test_a_parameter_without_wavelengths_is_untouched():
     assert asset.wavelength is None
     assert "wvl1" not in asset.path
     assert "nm" not in repr(asset)
+    assert "nm" not in repr(plan)
 
 
 def test_wavelengths_for_a_parameter_without_them_are_refused():

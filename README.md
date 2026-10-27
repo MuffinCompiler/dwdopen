@@ -33,7 +33,7 @@ This downloads 2 m temperature and total precipitation for the next 24 hours, ev
 ```python
 dwd.nwp.models()                    # ['aicon', 'icon', 'icon-art', ..., 'icon-eu-eps']
 icon_eu.parameters()                # ['ALB_RAD', 'ALHFL_S', ..., 'T_2M', ...]
-icon_eu.parameter("T").level_types  # T is on pressure levels and model levels
+icon_eu.parameter("T")              # on pressure (100) and model (150) levels
 icon_eu.levels("T", "pressure")     # [50, 70, 100, ..., 850, ..., 1000]  (hPa)
 icon_eu.runs()                      # [..., Run(2026-10-27T06:00Z)], oldest first
 ```
@@ -45,7 +45,7 @@ These continue inside the `with DWD() as dwd:` block of the quickstart.
 Upper air: temperature on 850 and 500 hPa at +12 h.
 
 ```python
-upper_air = icon_eu.select("T", level_type="pressure", levels=[850, 500], steps="12h")
+upper_air = icon_eu.select("T", level_type="pressure", levels=[850, 500], steps=["12h"])
 upper_air.download("t.grib2")
 ```
 
@@ -75,7 +75,7 @@ plan to inspect. The plan never switches to a newer run later.
 ```python
 plan = query.resolve()
 print(plan)
-# ResolvedRequest(run=2026-10-27T06:00:00+00:00, 18 assets, 12.1 MB, TOT_PREC, T_2M,
+# ResolvedRequest(run=2026-10-27T06:00Z, 18 assets, 12.1 MB, TOT_PREC, T_2M,
 #                 9 steps 0h..24h)
 plan.download("forecast.grib2")
 ```

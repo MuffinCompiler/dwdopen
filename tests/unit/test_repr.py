@@ -78,7 +78,7 @@ def test_one_asset_is_singular():
 
 def test_an_empty_plan_says_so_instead_of_showing_an_empty_tuple():
     assert repr(plan([])) == (
-        "ResolvedRequest(run=2026-09-23T06:00:00+00:00, nothing selected)"
+        "ResolvedRequest(run=2026-09-23T06:00Z, nothing selected)"
     )
 
 

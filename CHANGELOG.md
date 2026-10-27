@@ -15,6 +15,8 @@ Versions follow [semantic versioning](https://semver.org/).
 - The README is now a short overview with everyday examples. The details moved to
   [docs/guide.md](docs/guide.md), which also explains how to regrid the native ICON grid
   to lat-lon with CDO.
+- Minutes in steps can also be written `min`: `"15min"`, `"1h30min"`.
+- Shorter, readable output for runs and parameters.
 
 ## 0.5.1
 

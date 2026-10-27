@@ -56,10 +56,10 @@ class Run:
         )
 
     def __str__(self) -> str:
-        return self.reference_time.isoformat()
+        return f"{self.reference_time:%Y-%m-%dT%H:%MZ}"
 
     def __repr__(self) -> str:
-        return f"Run({self.reference_time:%Y-%m-%dT%H:%MZ})"
+        return f"Run({self})"
 
 
 def _as_utc(value: datetime) -> datetime:

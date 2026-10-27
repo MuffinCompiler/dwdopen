@@ -3,7 +3,7 @@ they get back, and printing a run.
 """
 
 import dwdopen
-from dwdopen import Between, Every, LevelType, Query, Run
+from dwdopen import Between, Every, LevelType, ParameterInfo, Query, Run
 from dwdopen.nwp.model import Model
 
 
@@ -62,3 +62,28 @@ def test_a_query_shows_members_and_wavelengths_when_given():
     )
     art = Query(None, "icon-art", parameters=("SAT_BSC_DUST",), wavelengths=532)
     assert repr(art) == "Query('icon-art', ['SAT_BSC_DUST'], wavelengths=532)"
+
+
+def test_a_run_reads_back_from_its_str():
+    run = Run.coerce("2026-10-22T06:00")
+    assert str(run) == "2026-10-22T06:00Z"
+    assert Run.coerce(str(run)) == run
+
+
+def test_a_level_type_prints_code_and_name():
+    assert repr(LevelType.coerce("pressure")) == "LevelType(100, 'pressure')"
+    assert repr(LevelType(208)) == "LevelType(208)"
+
+
+def test_parameter_info_lists_what_the_parameter_is_on():
+    pressure, model = LevelType.coerce("pressure"), LevelType.coerce("model")
+    info = ParameterInfo("icon-eu", "T", level_types=(pressure, model))
+    assert repr(info) == (
+        "ParameterInfo('icon-eu', 'T', level_types=[pressure (100), model (150)])"
+    )
+    assert repr(ParameterInfo("icon-eu", "T_2M")) == "ParameterInfo('icon-eu', 'T_2M')"
+    dust = ParameterInfo("icon-art", "SAT_BSC_DUST", wavelengths=(532, 1064))
+    assert (
+        repr(dust)
+        == "ParameterInfo('icon-art', 'SAT_BSC_DUST', wavelengths=[532, 1064] nm)"
+    )

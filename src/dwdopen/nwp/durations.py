@@ -21,7 +21,8 @@ __all__ = [
 
 # Regex to parse XXhXXm and the way DWD writes their files "PT006H00M"
 # Using this regex, the matched groups are (hours, minutes).
-_DURATION = re.compile(r"(?:PT)?(?:(\d+)H)?(?:(\d+)M)?", re.IGNORECASE)
+# Minutes may be written "m" or "min": "15m", "15min", "1h30min".
+_DURATION = re.compile(r"(?:PT)?(?:(\d+)H)?(?:(\d+)M(?:IN)?)?", re.IGNORECASE)
 
 
 def parse_duration(value: StepScalar) -> timedelta:
@@ -38,7 +39,7 @@ def parse_duration(value: StepScalar) -> timedelta:
     if match is None or not any(match.groups()):
         raise InvalidSelectorError(
             f"cannot read {value!r} as a forecast step. Expected something like "
-            "'6h', '15m', '1h30m' or 'PT006H00M'"
+            "'6h', '15m', '15min', '1h30m' or 'PT006H00M'"
         )
     hours, minutes = match.groups()
     return timedelta(hours=int(hours or 0), minutes=int(minutes or 0))

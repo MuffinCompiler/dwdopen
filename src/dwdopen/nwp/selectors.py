@@ -102,6 +102,11 @@ class LevelType:
             return f"{self.alias} ({self.code})"
         return f"lvt1={self.code}"
 
+    def __repr__(self) -> str:
+        if self.alias:
+            return f"{type(self).__name__}({self.code}, {self.alias!r})"
+        return f"{type(self).__name__}({self.code})"
+
 
 KNOWN_LEVEL_TYPES = {
     100: LevelType(100, "pressure", unit="Pa", user_unit="hPa", scale=Decimal(100)),

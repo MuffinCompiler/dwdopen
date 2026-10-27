@@ -23,6 +23,9 @@ from dwdopen.nwp.selectors import Between, Every
         ("120h", timedelta(hours=120)),
         ("5m", timedelta(minutes=5)),
         ("1h30m", timedelta(hours=1, minutes=30)),
+        ("15min", timedelta(minutes=15)),
+        ("1h30min", timedelta(hours=1, minutes=30)),
+        ("90MIN", timedelta(minutes=90)),
         # the ISO form DWD writes in filenames
         ("PT000H00M", timedelta()),
         ("PT000H05M", timedelta(minutes=5)),

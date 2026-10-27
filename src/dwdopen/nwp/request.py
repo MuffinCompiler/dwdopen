@@ -471,6 +471,11 @@ class ResolvedRequest:
         elif members:
             parts.append(f"{len(members)} members")
 
+        wavelengths = {a.wavelength for a in self.assets if a.wavelength is not None}
+        if wavelengths:
+            listed = ", ".join(str(w) for w in sorted(wavelengths))
+            parts.append(f"{listed} nm")
+
         kinds = {a.level_type for a in self.assets if a.level_type is not None}
         if kinds:
             levels = {a.level for a in self.assets if a.level is not None}

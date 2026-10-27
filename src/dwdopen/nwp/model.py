@@ -52,6 +52,17 @@ class ParameterInfo:
     def is_multi_level(self) -> bool:
         return bool(self.level_types)
 
+    def __repr__(self) -> str:
+        # ParameterInfo('icon-eu', 'T', level_types=[pressure (100), model (150)])
+        parts = [repr(self.model), repr(self.name)]
+        if self.level_types:
+            listed = ", ".join(str(level_type) for level_type in self.level_types)
+            parts.append(f"level_types=[{listed}]")
+        if self.wavelengths:
+            listed = ", ".join(str(wavelength) for wavelength in self.wavelengths)
+            parts.append(f"wavelengths=[{listed}] nm")
+        return f"{type(self).__name__}({', '.join(parts)})"
+
 
 class Model:
     """A handle on one NWP model.
