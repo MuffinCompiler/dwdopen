@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "dwdopen"
-version = "0.5.1"
+version = "1.0.0"
 description = "Typed Python access to DWD Open Data numerical weather prediction (ICON)."
 readme = "README.md"
 license = "MIT"
@@ -12,7 +12,7 @@ requires-python = ">=3.11"
 authors = [{ name = "Christoph Fischer", mail = "dwdopen@muffincompiler.de" }]
 keywords = ["dwd", "opendata", "nwp", "icon", "grib", "weather"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",

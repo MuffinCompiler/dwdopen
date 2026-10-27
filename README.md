@@ -4,8 +4,6 @@ Python library to download numerical weather prediction (NWP) data from
 [DWD Open Data](https://opendata.dwd.de/). List currently available models,
 parameters, and runs. Select what data you want and download it as GRIB2 file(s).
 
-> Still in alpha, the API may change before 1.0. See the [roadmap](#roadmap).
-
 ## Install
 
 Requires Python 3.11 or newer.

@@ -2,7 +2,10 @@
 
 Versions follow [semantic versioning](https://semver.org/).
 
-## Unreleased
+## 1.0.0
+
+Final fixes and usability improvements for 1.0.
+
 
 - Removed `Model.latest_run()`. It returned the newest run listed, without checking
    that the run is complete, which is unintuitive. `model.runs()[-1]` for the
@@ -23,9 +26,9 @@ Versions follow [semantic versioning](https://semver.org/).
 - Pressure levels are now consistently in hPa when user facing. Only to build the path
    to the data on the server, the unit is converted into Pa as this is what the DWD
    server operates on.
-- A mistyped options now raises `InvalidSelectorError` instead of silently failing or
-   or leading to unexpected behavior (e.g., `require="full"` as full is not a defined
-   keyword.
+- A mistyped option now raises `InvalidSelectorError` instead of silently failing or
+   leading to unexpected behavior (e.g., `require="full"`, as full is not a defined
+   keyword).
 - `members=` on a deterministic model raises instead of being ignored.
 - `Model.runs(parameter=...)` now works with only given a parameter. It then takes the 
    first level type and level to look for available runs.
