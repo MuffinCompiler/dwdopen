@@ -1,15 +1,14 @@
 # dwdopen
 
-Python library to access [DWD Open Data](https://opendata.dwd.de/) numerical weather
-prediction (NWP) data: discover what data is currently offered, define what you want,
-and download it.
+Python library to download numerical weather prediction (NWP) data from
+[DWD Open Data](https://opendata.dwd.de/). List currently available models,
+parameters, and runs. Select what data you want and download it as GRIB2 file(s).
 
-> Still in alpha, not everything works yet and the API may change before 1.0.
-> See the [Roadmap](#roadmap).
+> Still in alpha, the API may change before 1.0. See the [roadmap](#roadmap).
 
 ## Install
 
-Requires **Python 3.11 or newer**.
+Requires Python 3.11 or newer.
 
 ```bash
 pip install dwdopen
@@ -18,206 +17,106 @@ pip install dwdopen
 ## Quickstart
 
 ```python
-from dwdopen import DWD
+from dwdopen import DWD, Every
 
 with DWD() as dwd:
     icon_eu = dwd.nwp.model("icon-eu")
-
-    query = icon_eu.select(parameters=["T_2M", "PMSL"], steps="6h")
+    query = icon_eu.select(["T_2M", "TOT_PREC"], steps=Every("0h", "24h", "3h"))
     query.download("forecast.grib2")
 ```
+
+This downloads 2 m temperature and total precipitation for the next 24 hours, every
+3 hours, from the newest ICON-EU run that is completely published, into one GRIB2 file.
 
 ## Discovery
 
 ```python
-dwd.nwp.models()                    # every model DWD currently publishes
-icon_eu.parameters()                # every parameter of one model
-icon_eu.parameter("T").level_types  # (pressure (100), model (150))
-icon_eu.levels("T", "pressure")     # available level values
+dwd.nwp.models()                    # ['aicon', 'icon', 'icon-art', ..., 'icon-eu-eps']
+icon_eu.parameters()                # ['ALB_RAD', 'ALHFL_S', ..., 'T_2M', ...]
+icon_eu.parameter("T").level_types  # T is on pressure levels and model levels
+icon_eu.levels("T", "pressure")     # [50, 70, 100, ..., 850, ..., 1000]  (hPa)
+icon_eu.runs()                      # [..., Run(2026-10-27T06:00Z)], oldest first
 ```
 
-## Selecting
+## Examples
 
-### Forecast steps
+These continue inside the `with DWD() as dwd:` block of the quickstart.
 
-Steps are **durations**, ICON-D2 publishes precipitation every
-15 minutes and ICON-D2-RUC every 5.
+Upper air: temperature on 850 and 500 hPa at +12 h.
 
 ```python
-from dwdopen import Between, Every, hours, minutes
-
-steps="6h"                        # exactly this step
-steps=["0h", "3h", "6h"]          # exactly these
-steps=Every("0h", "48h", "3h")    # interval, inclusive at both ends
-steps=Between("0h", "48h")        # whatever exists in the interval
-steps="all"                       # everything published
-
-steps=hours(0, 6, 12, 18)         # plain numbers, if that is what you have
-steps=hours(range(0, 121, 3))     # or any iterable of them
-steps=minutes(0, 15, 30)          # for the sub-hourly models
+upper_air = icon_eu.select("T", level_type="pressure", levels=[850, 500], steps="12h")
+upper_air.download("t.grib2")
 ```
 
-`hours()` and `minutes()` turn a single number into a single duration, so they compose
-with the others too: `Every(hours(0), hours(48), hours(3))`.
-
-`Every` names exact steps, so a missing one makes the request incomplete. `Between` and
-`"all"` ask for whatever is there and can never be incomplete.
-
-Note that DWD publishes data incrementally on the server, so a run might just be halfway
-available. If you use `Between`, you might just get what's already available, not the full
-data.
-
-### Ensemble members
-
-The `-eps` models publish each member separately. Members are plain integers; how many
-there are differs per model (40 for ICON-EPS and ICON-EU-EPS, 20 for ICON-D2-EPS, 10 for
-ICON-ART-EPS):
+Ensemble: the first 5 members of ICON-EU-EPS, one file per member, into a directory.
 
 ```python
-eps.select(parameters="T_2M", members=[1, 2, 5])
-eps.select(parameters="T_2M", members=Between(1, 10))
-eps.select(parameters="T_2M")                       # every member
+from dwdopen import Between
+
+eps = dwd.nwp.model("icon-eu-eps")
+ensemble = eps.select("T_2M", members=Between(1, 5), steps="24h")
+ensemble.download("members/", combine="member")
 ```
 
-Leaving `members` out takes all of them, the same as levels and steps.
-
-### Vertical levels
+A scheduled job: give a directory instead of a file name, and the file is named after
+the model, run and selection. Running the job again for the same run downloads nothing.
+`query` is the one from the quickstart.
 
 ```python
-icon_eu.select(parameters="T", level_type="pressure", levels=[850, 500])
-icon_eu.select(parameters="T", level_type="model", levels=Between(60, 74))
-icon_eu.select(parameters="T_SO", level_type="soil", levels="all")
+result = query.download("/data/icon-eu/")
+# /data/icon-eu/icon-eu_2026-10-27T0600_TOT_PREC+T_2M_single_0h-24h_ec484355.grib2
+result.assets_skipped   # 18 on the second run: the file was already there
 ```
 
-`level_type` may be left out only while the selection is unambiguous. `T` is available on
-both pressure and model levels, so omitting it raises `AmbiguousSelectionError` rather
-than guessing. A 2-D field such as `T_2M` needs no level type at all. Time-invariant fields
-need no level type either. These are published under every run with a single step.
-`HHL` is the exception, being model half-level heights:
-
-```python
-icon_d2.select(parameters="HSURF", steps="0h")                      # no level type
-icon_d2.select(parameters="HHL", level_type="model", levels="all")
-```
-
-### ICON-ART wavelengths
-
-A few ICON-ART parameters, currently `SAT_BSC_DUST` and `CEIL_BSC_DUST`, are published
-per wavelength (532 and 1064 nm). Leaving `wavelengths` out for these parameters
-will download all of them. Specifying a wavelength that does not exist or for models and
-parameters not published on different wavelengths raises an error.
-
-```python
-art = dwd.nwp.model("icon-art")
-art.parameter("SAT_BSC_DUST").wavelengths                              # (532, 1064)
-art.select(parameters="SAT_BSC_DUST", levels=Between(100, 120), wavelengths=532)
-```
-
-## Investigate before you download
-
-`resolve()` freezes a query against one run and hands back a plan you can inspect before
-any download happens:
-
-```python
-plan = icon_eu.select(parameters="U", level_type="pressure").resolve()
-print(plan)
-# ResolvedRequest(run=2026-09-23T06:00:00+00:00, 1860 assets, 1.5 GB, U,
-#                 on pressure (100), 20 levels, steps 0h..120h)
-
-print(plan.assets[0])
-# Asset(U, 50 hPa, 0h, 723.4 KB)
-
-plan.download("u.grib2")
-```
-
-A plan never switches to a newer run later, so what you inspected is what you get.
-
-### Complete runs
-
-DWD publishes a run step by step over a few hours. By default (`require="complete"`)
-`resolve()` and `download()` raise `IncompleteRunError` unless every requested step
-exists on every requested level and member. `require="partial"` takes what is there
-and lists the rest in `plan.missing`.
-
-What "every requested step" means depends on how the steps are selected:
-
-- Named steps (`Every("0h", "180h", "3h")`, a list, a single step) are checked exactly.
-- `"all"` and `Between()` mean "what DWD has published so far". The server offers no
-  list of the steps a run will have, so dwdopen can only notice a step that some levels
-  or members have and others lack.
-
-To be sure a run is complete, name the steps.
-
-## Downloading
-
-```python
-query.download("forecast.grib2")                    # one combined file
-query.download("members/", combine="member")        # one file per ensemble member
-query.download("params/", combine="parameter")      # one file per parameter
-query.download("forecast/", combine="none")         # one file per message
-query.download("f.grib2", temp_dir="/scratch")      # partial downloads before combining elsewhere
-```
-
-`combine="all"` concatenates the messages into a single GRIB2 file.
-You can also provide just a directory in this case and the name is
-generated automatically.
+Look before you download: `resolve()` freezes a query against one run and gives you a
+plan to inspect. The plan never switches to a newer run later.
 
 ```python
 plan = query.resolve()
-plan.suggested_name()            # 'icon-eu_2026-09-24T0600_PMSL+T_2M_single_0h-24h_2801ebe5.grib2'
-plan.download("/home/weather/")   # writes that name into the directory
+print(plan)
+# ResolvedRequest(run=2026-10-27T06:00:00+00:00, 18 assets, 12.1 MB, TOT_PREC, T_2M,
+#                 9 steps 0h..24h)
+plan.download("forecast.grib2")
 ```
 
-Downloads run concurrently, are written to a temporary name and renamed into place, so a
-partial file is never mistaken for a finished one. Several processes may write the same
-directory at once. Already downloaded files are skipped.
-`DownloadResult.assets_skipped` says how many were already there, which is worth
-checking in a scheduled job.
+## The data is on the native ICON grid
 
-### Progress
+DWD publishes every model on the unstructured triangular ICON grid. To get a regular
+lat-lon grid, regrid with [CDO](https://code.mpimet.mpg.de/projects/cdo). For ICON
+global, DWD provides ready-made weights:
 
-On a terminal or in Jupyter a download shows one line:
-
-```
-━━━━━━━━━━━━━━━━╸━━━━━━━━━━━  57%  312/546 files  2.3 GB/4.0 GB  48.2 MB/s  ETA 0:36
+```bash
+# from https://opendata.dwd.de/weather/lib/cdo/ICON_GLOBAL2WORLD_025_EASY.tar.bz2
+cdo -f nc remap,target_grid_world_025.txt,weights_icogl2world_025.nc t_2m.grib2 t_2m.nc
 ```
 
-When nobody watches the output (e.g., output redirected to a file),
-the same numbers are logged every 10 seconds instead. `DWD(progress=False)`
-turns progress off.
+For ICON-EU and the other models see
+[Regridding](https://github.com/MuffinCompiler/dwdopen/blob/master/docs/guide.md#regridding)
+in the guide.
 
-## Caching
+## Features
 
-Directory listings are cached to keep the number of requests to the server low.
-The structure of a model (parameters, level types, levels) is kept for the
-lifetime of the `DWD` client, as it only changes when DWD changes the model. Runs and
-steps change constantly as runs are published and deleted, so they are re-read on
-every call. One `resolve()` sees one consistent view of the server.
+The [guide](https://github.com/MuffinCompiler/dwdopen/blob/master/docs/guide.md) explains
+each of these in detail.
 
-If DWD changes a model while your client is running, `dwd.refresh()` drops the cache.
-
-## Logging
-
-The library logs through the `dwdopen` logger. You can change the logging level via:
-
-```python
-import logging, dwdopen
-
-dwdopen.set_log_level(logging.DEBUG)    # a line per file to download
-dwdopen.set_log_level(logging.WARNING)  # only retries and warnings
-dwdopen.set_log_level(None)             # disable the dwdopen logging
-```
-
-The handler is connected to the `dwdopen` logger. It will not override
-the logging your application sets up for itself. If you do configure your own logger
-and want to use that logger, call `set_log_level(None)`. That will uninstall the handler.
+- Every ICON model on DWD Open Data: ICON, ICON-EU, ICON-D2, ICON-D2-RUC, their
+  ensembles, ICON-ART and AICON. Nothing is hard-coded.
+- Steps as durations: `"6h"`, `["0h", "3h"]`, `Every("0h", "48h", "3h")`,
+  `Between("0h", "48h")`, `"all"`, and 15 or 5 minute steps for ICON-D2 and ICON-D2-RUC.
+- Vertical levels: pressure levels in hPa, model levels and soil levels.
+- Ensemble members: `members=[1, 2, 5]`, `Between(1, 10)`, or all of them.
+- ICON-ART wavelengths: `wavelengths=532` for the dust backscatter fields.
+- Complete runs only: by default a run that DWD is still publishing is skipped, and
+  `require="partial"` takes what is there and reports the rest.
+- Combining: return one file, one per parameter, one per ensemble member, or one file per
+  GRIB message.
+- Safe, resumable downloads: concurrent, written atomically, already downloaded files
+  are skipped, with a progress bar.
+- Clear errors: every error is a `DWDOpenError`, and typos in names and options are
+  caught before anything is downloaded.
 
 ## Roadmap
-
-### 1.0
-
-- [x] Feedback of download progress.
-- [x] ICON-ART wavelengths (the `wvl1` segment).
 
 ### After 1.0
 
@@ -227,16 +126,15 @@ and want to use that logger, call `set_log_level(None)`. That will uninstall the
 
 The goal is a complete Python interface to DWD Open Data:
 
-- [ ] Observations: station data (`/weather/weather_reports`)
+- [ ] Observations and current station reports (`weather/weather_reports`).
 - [ ] Radar: composites and single-site products (`weather/radar`).
 - [ ] Point forecasts: MOSMIX (`weather/local_forecasts`).
 - [ ] Weather warnings (`weather/alerts`).
 - [ ] Satellite products (`weather/satellite`).
-- [ ] Current station reports (`weather/weather_reports`).
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](https://github.com/MuffinCompiler/dwdopen/blob/master/LICENSE).
 
 Forecast data itself is provided by Deutscher Wetterdienst (DWD) under its own
 [terms of use](https://www.dwd.de/EN/service/copyright/copyright_node.html).

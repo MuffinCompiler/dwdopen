@@ -12,6 +12,9 @@ Versions follow [semantic versioning](https://semver.org/).
 - A `Query` prints like the `select()` call that built it, with steps, level type,
    levels, members and wavelengths: `Query('icon-eu', ['T'], level_type='pressure',
    levels=[850, 500])`.
+- The README is now a short overview with everyday examples. The details moved to
+  [docs/guide.md](docs/guide.md), which also explains how to regrid the native ICON grid
+  to lat-lon with CDO.
 
 ## 0.5.1
 
