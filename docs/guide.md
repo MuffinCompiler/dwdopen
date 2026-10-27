@@ -33,6 +33,7 @@ dwd.nwp.models()                    # every model DWD currently publishes
 icon_eu.parameters()                # every parameter of one model, sorted
 
 info = icon_eu.parameter("T")
+# ParameterInfo('icon-eu', 'T', level_types=[pressure (100), model (150)])
 info.level_types                    # pressure (100) and model (150)
 info.wavelengths                    # () for everything except two ICON-ART fields
 
@@ -72,12 +73,14 @@ Steps are **durations** since the run started. ICON-D2 publishes some fields eve
 
 ```python
 steps="6h"                        # exactly this step
+steps=["6h"]                      # the same, as a list
 steps=["0h", "3h", "6h"]          # exactly these
 steps=Every("0h", "48h", "3h")    # every 3 hours, both ends included
 steps=Between("0h", "48h")        # whatever exists in the interval
 steps="all"                       # everything published
 
 steps="15m"                       # minutes, for ICON-D2 and ICON-D2-RUC
+steps="15min"                     # the same
 steps="1h30m"                     # hours and minutes together
 steps=Every("0h", "2h", "15m")    # every 15 minutes for the first 2 hours
 
@@ -173,8 +176,8 @@ If no run qualifies, `NoMatchingRunError` says why each of the newest runs was s
 
 ```
 no run of 'icon-eu' satisfies this query (9 runs were checked, newest first):
-  run 2026-10-27T06:00:00+00:00 is missing 1 requested step(s): T_2M 999h
-  run 2026-10-27T03:00:00+00:00 is missing 1 requested step(s): T_2M 999h
+  run 2026-10-27T06:00Z is missing 1 requested step(s): T_2M 999h
+  run 2026-10-27T03:00Z is missing 1 requested step(s): T_2M 999h
   ...
 ```
 
@@ -187,8 +190,8 @@ deletes the run in the meantime, the download fails instead.
 ```python
 plan = icon_eu.select("T", level_type="pressure", levels=[850, 500], steps="12h").resolve()
 print(plan)
-# ResolvedRequest(run=2026-10-27T06:00:00+00:00, 2 assets, 1.8 MB, T, on pressure (100),
-#                 2 levels, steps 12h)
+# ResolvedRequest(run=2026-10-27T06:00Z, 2 assets, 1.8 MB, T, on pressure (100), 2 levels,
+#                 steps 12h)
 plan.assets[0]          # Asset(T, 500 hPa, 12h, 913.9 KB)
 plan.total_size         # bytes to download
 plan.missing            # what require="partial" left out
