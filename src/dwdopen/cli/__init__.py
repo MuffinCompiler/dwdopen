@@ -6,12 +6,29 @@ import logging
 
 import click
 
-from dwdopen import __version__, set_log_level
+from dwdopen import DWDOpenError, __version__, set_log_level
 
 __all__ = ["main"]
 
 
-@click.group()
+class DWDOpenGroup(click.Group):
+    """A click group that turns a DWDOpenError into a short message.
+
+    The message goes to stderr and the exit code is 1. With -v the error is
+    raised as usual, so the full traceback is shown.
+    """
+
+    def invoke(self, ctx: click.Context) -> object:
+        try:
+            return super().invoke(ctx)
+        except DWDOpenError as error:
+            if ctx.obj is not None and ctx.obj["verbose"]:
+                raise
+            click.echo(f"Error: {error}", err=True)
+            ctx.exit(1)
+
+
+@click.group(cls=DWDOpenGroup)
 @click.version_option(__version__, prog_name="dwdopen")
 @click.option("-q", "--quiet", is_flag=True, help="Only show warnings and errors.")
 @click.option("-v", "--verbose", is_flag=True, help="Show debug logs.")

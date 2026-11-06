@@ -7,7 +7,7 @@ import pytest
 from click.testing import CliRunner
 
 import dwdopen
-from dwdopen import set_log_level
+from dwdopen import DWDOpenError, set_log_level
 from dwdopen.cli import main
 
 
@@ -34,6 +34,21 @@ def probe():
     main.add_command(probe)
     yield seen
     del main.commands["probe"]
+    set_log_level()
+
+
+@pytest.fixture
+def fail():
+    """A throwaway `dwdopen fail` command that raises the error it is given."""
+    errors = []
+
+    @click.command()
+    def fail():
+        raise errors[0]
+
+    main.add_command(fail)
+    yield errors
+    del main.commands["fail"]
     set_log_level()
 
 
@@ -76,3 +91,25 @@ def test_quiet_and_verbose_together_is_a_usage_error(probe):
     result = run("-q", "-v", "probe")
     assert result.exit_code == 2
     assert "-q and -v cannot be used together" in result.output
+
+
+def test_a_dwdopen_error_is_one_line_on_stderr_with_exit_1(fail):
+    fail.append(DWDOpenError("no runs of icon-eu are listed"))
+    result = run("fail")
+    assert result.exit_code == 1
+    assert result.stderr == "Error: no runs of icon-eu are listed\n"
+    assert result.stdout == ""
+
+
+def test_verbose_shows_the_traceback(fail):
+    fail.append(DWDOpenError("no runs of icon-eu are listed"))
+    result = run("-v", "fail")
+    assert result.exit_code == 1
+    assert isinstance(result.exception, DWDOpenError)
+
+
+def test_other_errors_are_not_hidden(fail):
+    fail.append(ValueError("a bug"))
+    result = run("fail")
+    assert result.exit_code == 1
+    assert isinstance(result.exception, ValueError)
