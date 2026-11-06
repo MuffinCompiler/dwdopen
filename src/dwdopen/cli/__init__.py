@@ -7,6 +7,7 @@ import logging
 import click
 
 from dwdopen import DWDOpenError, __version__, set_log_level
+from dwdopen.cli import nwp
 
 __all__ = ["main"]
 
@@ -48,3 +49,6 @@ def main(ctx: click.Context, quiet: bool, verbose: bool, no_progress: bool) -> N
 
     # Set the context to be read by the client.
     ctx.obj = {"verbose": verbose, "progress": not no_progress}
+
+
+main.add_command(nwp.nwp)
