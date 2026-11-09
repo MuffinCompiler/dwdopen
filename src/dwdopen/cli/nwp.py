@@ -18,3 +18,11 @@ def open_dwd() -> DWD:
     """The client for one command."""
     options = click.get_current_context().obj
     return DWD(progress=options["progress"])
+
+
+@nwp.command()
+def models() -> None:
+    """List the currently available models."""
+    with open_dwd() as dwd:
+        for name in dwd.nwp.models():
+            click.echo(name)
