@@ -26,3 +26,12 @@ def models() -> None:
     with open_dwd() as dwd:
         for name in dwd.nwp.models():
             click.echo(name)
+
+
+@nwp.command()
+@click.argument("model")
+def params(model: str) -> None:
+    """List the parameters of a given model."""
+    with open_dwd() as dwd:
+        for name in dwd.nwp.model(model).parameters():
+            click.echo(name)
