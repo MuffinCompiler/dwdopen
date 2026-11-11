@@ -301,6 +301,21 @@ class Model:
                 )
             return None
 
+        # A 2-D field has no lvt1 segment, so it cannot share a query with a
+        # field that has one. Raise if mixed level types.
+        single = sorted(p for p, types in per_parameter.items() if not types)
+        if single:
+            others = "; ".join(
+                f"{parameter} on {', '.join(str(lt) for lt in types)}"
+                for parameter, types in sorted(per_parameter.items())
+                if types
+            )
+            raise InvalidSelectorError(
+                f"{', '.join(single)} in {self._name!r} "
+                f"{'is' if len(single) == 1 else 'are'} published on a single "
+                f"level, but {others}. Select them separately"
+            )
+
         if len(candidates) > 1:
             ordered = sorted(candidates, key=lambda c: c.code)
             listed = ", ".join(str(lt) for lt in ordered)

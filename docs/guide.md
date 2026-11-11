@@ -107,10 +107,18 @@ icon_eu.select("T_SO", level_type="soil", levels="all")
 Levels are in hPa for pressure, the level index for model levels, metres below ground
 for soil (`0.005`, `0.02`, ...).
 
-`level_type` takes a name (`"pressure"`, `"model"`, `"soil"`) or a GRIB code (`100`). It may
-be left out only while the selection is unambiguous. `T` exists on pressure and model
-levels, so leaving it out raises `AmbiguousSelectionError`. A 2-D field such as `T_2M`
-takes no level type at all.
+| `level_type` | GRIB code | Levels | Used by |
+|---|---|---|---|
+| `"pressure"` | 100 | hPa | `T`, `U`, `V`, `FI`, `RELHUM`, ... |
+| `"model"` | 150 | level index | `T`, `QV`, `HHL`, `W`, ... |
+| `"soil"` | 106 | metres below ground | `T_SO`, `W_SO`, ... |
+| `"height"` | 103 | metres above ground | `SRH`, `WSHEAR_U`, `WSHEAR_V` on ICON-D2-RUC |
+| `"echotop"` | 25 | reflectivity in dBZ | `ECHOTOP` on the ICON-D2 models |
+
+`level_type` takes a name or a GRIB code (`100`). It may be left out only while the
+selection is unambiguous. `T` exists on pressure and model levels, so leaving it out
+raises `AmbiguousSelectionError`. A 2-D field such as `T_2M` takes no level type at all,
+so it cannot be selected together with a field that has one: select them separately.
 
 Time-invariant fields such as `HSURF`, `FR_LAND`, `CLAT` and `CLON` are published under
 every run with a single step, `0h`. `HHL`, the height of the model half levels, is

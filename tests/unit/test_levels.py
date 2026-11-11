@@ -151,6 +151,24 @@ def test_a_surface_parameter_has_no_level_type():
     assert model.select(parameters="T_2M")._level_type is None
 
 
+def test_a_surface_parameter_with_a_3d_one_is_refused():
+    # T_2M used to be looked up under the other field's lvt1/100 and the
+    # server answered 404. ICON-D2's ECHOTOP (lvt1=25) did the same to PS.
+    model = model_with({"T_2M": [], "PS": [], "OMEGA": [PRESSURE]})
+    with pytest.raises(InvalidSelectorError) as caught:
+        model.select(parameters=["T_2M", "PS", "OMEGA"], steps="0h")
+    message = str(caught.value)
+    assert message.startswith("PS, T_2M in 'icon-eu' are published on a single level")
+    assert "OMEGA on pressure (100)" in message
+    assert message.endswith("Select them separately")
+
+
+def test_naming_a_level_type_for_a_surface_parameter_is_refused():
+    model = model_with({"T_2M": [], "OMEGA": [PRESSURE]})
+    with pytest.raises(InvalidSelectorError, match="T_2M .* not published on"):
+        model.select(parameters=["T_2M", "OMEGA"], level_type="pressure")
+
+
 def test_levels_on_a_surface_parameter_are_rejected():
     model = model_with({"T_2M": []})
     with pytest.raises(InvalidSelectorError, match="single level"):
@@ -326,3 +344,36 @@ def test_an_open_selector_on_consistent_data_reports_nothing_missing():
         chosen = _select_steps(available, selector)
         assert _named_steps(selector) is None
         assert _find_missing("PMSL", chosen, None, None, None) == []
+
+
+# --- level types with a name ----------------------------------------------
+
+@pytest.mark.parametrize(
+    ("alias", "code", "unit"),
+    [("pressure", 100, "Pa"), ("model", 150, "index"), ("soil", 106, "m"),
+     ("height", 103, "m"), ("echotop", 25, "dBZ")],
+)
+def test_every_level_type_on_the_server_has_a_name(alias, code, unit):
+    by_name = LevelType.coerce(alias)
+    assert by_name is LevelType.of(code)
+    assert by_name.unit == unit
+
+
+def test_a_level_type_with_a_name_prints_it():
+    assert str(LevelType.of(25)) == "echotop (25)"
+    assert repr(LevelType.of(103)) == "LevelType(103, 'height')"
+
+
+def test_echotop_and_height_levels_print_their_unit():
+    from datetime import timedelta
+
+    from dwdopen.nwp.request import Asset
+    from dwdopen.nwp.run import Run
+
+    def asset(level_type, level):
+        return Asset(keys=(("p", "X"),), run=Run.coerce("2026-11-11T00:00"),
+                     step=timedelta(0), path="x", level_type=level_type,
+                     level=Decimal(level))
+
+    assert asset(LevelType.of(25), 18).describe_level() == "18 dBZ"
+    assert asset(LevelType.of(103), 1000).describe_level() == "1000 m"

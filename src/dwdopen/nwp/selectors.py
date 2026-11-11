@@ -112,9 +112,13 @@ KNOWN_LEVEL_TYPES = {
     100: LevelType(100, "pressure", unit="Pa", user_unit="hPa", scale=Decimal(100)),
     150: LevelType(150, "model", unit="index"),
     106: LevelType(106, "soil", unit="m"),
+    103: LevelType(103, "height", unit="m"),
+    25: LevelType(25, "echotop", unit="dBZ"),
 }
 """Some known level types that actually occur in v1 paths.
 It may be extended freely; unknown codes keep working via LevelType.of.
+103 is the height above ground (SRH, WSHEAR_U/V on ICON-D2-RUC at 1000,
+3000 and 6000 m). 25 is used for echotops.
 """
 
 LevelTypeLike = LevelType | int | str

@@ -2,6 +2,16 @@
 
 Versions follow [semantic versioning](https://semver.org/).
 
+## 1.0.1
+
+- Fixed: selecting a 2-D field together with a field on a level type, for example
+   `["T_2M", "OMEGA"]` or `["PS", "ECHOTOP"]` on ICON-D2, used the other field's level
+   type for the 2-D field too, and failed with a 404 when resolving. `select()` now raises
+   `InvalidSelectorError` and asks to select them separately.
+- The level types 103 and 25 have names: `level_type="height"` (metres above ground,
+   used by `SRH`, `WSHEAR_U` and `WSHEAR_V` on ICON-D2-RUC) and `level_type="echotop"`
+   (dBZ, used by `ECHOTOP` on the ICON-D2 models).
+
 ## 1.0.0
 
 Final fixes and usability improvements for 1.0.
