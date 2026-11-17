@@ -53,3 +53,23 @@ def runs(model: str, param: str | None) -> None:
     with open_dwd() as dwd:
         for run in dwd.nwp.model(model).runs(parameter=param):
             click.echo(str(run))
+
+
+@nwp.command()
+@click.argument("model")
+@click.argument("param")
+def info(model: str, param: str) -> None:
+    """Show the level types (and wavelengths for ICON ART) of one parameter."""
+    with open_dwd() as dwd:
+        found = dwd.nwp.model(model).parameter(param)
+
+    click.echo(f"model:       {found.model}")
+    click.echo(f"parameter:   {found.name}")
+    if found.level_types:
+        listed = ", ".join(str(level_type) for level_type in found.level_types)
+        click.echo(f"level types: {listed}")
+    else:
+        click.echo("level types: none, a single-level (2-D) field")
+    if found.wavelengths:
+        listed = ", ".join(str(wavelength) for wavelength in found.wavelengths)
+        click.echo(f"wavelengths: {listed} nm")

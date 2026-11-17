@@ -78,3 +78,29 @@ def test_runs_of_an_unknown_parameter_exits_1(fake_dwd):
     result = run("nwp", "runs", "icon-eu", "-p", "T_3M")
     assert result.exit_code == 1
     assert result.stderr.startswith("Error: unknown parameter 'T_3M'")
+
+
+def test_info_of_a_parameter_on_two_level_types(fake_dwd):
+    result = run("nwp", "info", "icon-eu", "t")
+    assert result.exit_code == 0
+    assert result.stdout == (
+        "model:       icon-eu\n"
+        "parameter:   T\n"
+        "level types: pressure (100), model (150)\n"
+    )
+
+
+def test_info_of_a_2d_field(fake_dwd):
+    result = run("nwp", "info", "icon-eu", "T_2M")
+    assert "level types: none, a single-level (2-D) field\n" in result.stdout
+
+
+def test_info_shows_wavelengths(fake_dwd):
+    result = run("nwp", "info", "icon-art", "SAT_BSC_DUST")
+    assert result.stdout.endswith("wavelengths: 532, 1064 nm\n")
+
+
+def test_info_of_an_unknown_parameter_exits_1(fake_dwd):
+    result = run("nwp", "info", "icon-eu", "T_3M")
+    assert result.exit_code == 1
+    assert result.stderr.startswith("Error: unknown parameter 'T_3M'")
