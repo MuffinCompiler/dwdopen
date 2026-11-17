@@ -30,8 +30,14 @@ def models() -> None:
 
 @nwp.command()
 @click.argument("model")
-def params(model: str) -> None:
-    """List the parameters of a given model."""
+@click.argument("filter", required=False)
+def params(model: str, filter: str | None) -> None:
+    """List the parameters of a given model.
+
+    When FILTER is provided, only the param names that contain
+    the provided filter are listed.
+    """
     with open_dwd() as dwd:
         for name in dwd.nwp.model(model).parameters():
-            click.echo(name)
+            if filter is None or filter.lower() in name.lower():
+                click.echo(name)

@@ -38,3 +38,15 @@ def test_params_needs_a_model(fake_dwd):
     result = run("nwp", "params")
     assert result.exit_code == 2
     assert "Missing argument 'MODEL'" in result.stderr
+
+
+def test_params_filter_matches_part_of_the_name_in_any_case(fake_dwd):
+    result = run("nwp", "params", "icon-eu", "prec")
+    assert result.exit_code == 0
+    assert result.stdout == "TOT_PREC\n"
+
+
+def test_params_filter_matching_nothing_prints_nothing(fake_dwd):
+    result = run("nwp", "params", "icon-eu", "CLCT")
+    assert result.exit_code == 0
+    assert result.stdout == ""
