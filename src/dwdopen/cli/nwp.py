@@ -45,10 +45,11 @@ def params(model: str, filter: str | None) -> None:
 
 @nwp.command()
 @click.argument("model")
-def runs(model: str) -> None:
+@click.option("-p", "--param", help="List the runs of this parameter only.")
+def runs(model: str, param: str | None) -> None:
     """List the runs of a given model, oldest first.
     A run can be listed while DWD is still publishing it.
     """
     with open_dwd() as dwd:
-        for run in dwd.nwp.model(model).runs():
+        for run in dwd.nwp.model(model).runs(parameter=param):
             click.echo(str(run))

@@ -62,3 +62,19 @@ def test_runs_of_an_unknown_model_exits_1(fake_dwd):
     result = run("nwp", "runs", "icon-uu")
     assert result.exit_code == 1
     assert result.stderr.startswith("Error: unknown model 'icon-uu'")
+
+
+def test_runs_of_one_parameter(fake_dwd):
+    result = run("nwp", "runs", "icon-eu", "--param", "t_2m")
+    assert result.exit_code == 0
+    assert result.stdout == "2026-10-27T00:00Z\n2026-10-27T06:00Z\n"
+
+
+def test_runs_of_a_parameter_on_levels(fake_dwd):
+    assert run("nwp", "runs", "icon-eu", "-p", "T").exit_code == 0
+
+
+def test_runs_of_an_unknown_parameter_exits_1(fake_dwd):
+    result = run("nwp", "runs", "icon-eu", "-p", "T_3M")
+    assert result.exit_code == 1
+    assert result.stderr.startswith("Error: unknown parameter 'T_3M'")
