@@ -41,3 +41,14 @@ def params(model: str, filter: str | None) -> None:
         for name in dwd.nwp.model(model).parameters():
             if filter is None or filter.lower() in name.lower():
                 click.echo(name)
+
+
+@nwp.command()
+@click.argument("model")
+def runs(model: str) -> None:
+    """List the runs of a given model, oldest first.
+    A run can be listed while DWD is still publishing it.
+    """
+    with open_dwd() as dwd:
+        for run in dwd.nwp.model(model).runs():
+            click.echo(str(run))

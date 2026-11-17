@@ -50,3 +50,15 @@ def test_params_filter_matching_nothing_prints_nothing(fake_dwd):
     result = run("nwp", "params", "icon-eu", "CLCT")
     assert result.exit_code == 0
     assert result.stdout == ""
+
+
+def test_runs_prints_one_run_per_line_oldest_first(fake_dwd):
+    result = run("nwp", "runs", "icon-eu")
+    assert result.exit_code == 0
+    assert result.stdout == "2026-10-27T00:00Z\n2026-10-27T06:00Z\n"
+
+
+def test_runs_of_an_unknown_model_exits_1(fake_dwd):
+    result = run("nwp", "runs", "icon-uu")
+    assert result.exit_code == 1
+    assert result.stderr.startswith("Error: unknown model 'icon-uu'")
